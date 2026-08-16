@@ -5,12 +5,12 @@ After=codex-altair-tunnel.service
 
 [Service]
 Type=simple
-User=example
-WorkingDirectory=/home/example/agent-sandbox/codex-altair-provider
-Environment=CODEX_ALTAIR_UPSTREAM_URL=http://127.0.0.1:18001
+User=@USER@
+WorkingDirectory=@WORKING_DIRECTORY@
+Environment=@UPSTREAM_ENV@
 Environment=PYTHONDONTWRITEBYTECODE=1
 LoadCredential=tavily_key:/etc/codex-altair/tavily.key
-ExecStart=/home/example/agent-sandbox/codex-altair-provider/.venv/bin/codex-altair-provider --host 127.0.0.1 --port 18000
+ExecStart=@PROVIDER_EXEC@ --host @PROVIDER_HOST@ --port @PROVIDER_PORT@
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
@@ -22,4 +22,3 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target
-

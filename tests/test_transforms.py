@@ -5,6 +5,7 @@ import json
 from codex_altair_provider.transforms import (
     SSETransformer,
     flatten_web_namespace,
+    normalize_instruction_messages,
     restore_web_namespace_calls,
 )
 
@@ -91,3 +92,74 @@ def test_sse_transformer_preserves_non_json_and_done() -> None:
     wire = b": keepalive\ndata: [DONE]\n\n"
     assert transformer.feed(wire) + transformer.finish() == wire
 
+
+def _message(role: str, text: str) -> dict:
+    return {
+        "type": "message",
+        "role": role,
+        "content": [{"type": "input_text", "text": text}],
+    }
+
+
+def test_leading_instruction_message_is_unchanged() -> None:
+    payload = {"input": [_message("developer", "rules"), _message("user", "task")]}
+    original = json.loads(json.dumps(payload))
+
+    assert normalize_instruction_messages(payload) == 0
+    assert payload == original
+
+
+def test_late_instruction_message_moves_to_front() -> None:
+    payload = {
+        "input": [
+            _message("user", "task"),
+            {"type": "function_call", "name": "exec_command", "call_id": "1"},
+            _message("developer", "permissions changed"),
+        ]
+    }
+
+    assert normalize_instruction_messages(payload) == 1
+    assert payload["input"][0] == _message("developer", "permissions changed")
+    assert [item["type"] for item in payload["input"][1:]] == [
+        "message",
+        "function_call",
+    ]
+
+
+def test_multiple_instruction_messages_merge_in_order() -> None:
+    user = _message("user", "task")
+    tool = {"type": "function_call_output", "call_id": "1", "output": "ok"}
+    payload = {
+        "input": [
+            _message("developer", "base rules"),
+            user,
+            tool,
+            _message("developer", "updated permissions"),
+            _message("system", "override marker"),
+        ]
+    }
+
+    assert normalize_instruction_messages(payload) == 3
+    leading = payload["input"][0]
+    assert leading["role"] == "developer"
+    assert [part["text"] for part in leading["content"]] == [
+        "base rules",
+        "\n\n",
+        "updated permissions",
+        "\n\n",
+        "override marker",
+    ]
+    assert payload["input"][1:] == [user, tool]
+
+
+def test_instruction_normalization_does_not_mutate_source_messages() -> None:
+    first = _message("developer", "first")
+    second = _message("developer", "second")
+    original_first = json.loads(json.dumps(first))
+    original_second = json.loads(json.dumps(second))
+    payload = {"input": [first, _message("user", "task"), second]}
+
+    normalize_instruction_messages(payload)
+
+    assert first == original_first
+    assert second == original_second

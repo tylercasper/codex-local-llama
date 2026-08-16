@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export CODEX_HOME=/home/example/.codex-altair
+runtime_root="${CODEX_ALTAIR_RUNTIME_ROOT:-${HOME:?}/.local/lib/codex-altair}"
+export CODEX_HOME="${CODEX_ALTAIR_HOME:-${HOME}/.codex-altair}"
 unset OPENAI_API_KEY OPENAI_BASE_URL CODEX_OSS_BASE_URL CODEX_OSS_PORT
 
-exec /home/example/.local/lib/codex-altair/0.147.0/bin/codex "$@"
-
+exec "$runtime_root/codex/current/bin/codex" --profile altair "$@"

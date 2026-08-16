@@ -16,7 +16,12 @@ from .search import (
     TavilyUpstreamError,
     execute_search_request,
 )
-from .transforms import SSETransformer, flatten_web_namespace, restore_web_namespace_calls
+from .transforms import (
+    SSETransformer,
+    flatten_web_namespace,
+    normalize_instruction_messages,
+    restore_web_namespace_calls,
+)
 
 LOGGER = logging.getLogger("codex_altair_provider")
 
@@ -118,6 +123,7 @@ async def _proxy_responses(request: web.Request) -> web.StreamResponse:
         return _error_response(400, "Responses body must be a JSON object")
 
     payload, replacements = flatten_web_namespace(payload)
+    normalized_instructions = normalize_instruction_messages(payload)
     settings = request.app[SETTINGS_KEY]
     upstream_url = f"{settings.upstream_url}/v1/responses"
     headers = _forward_headers(request.headers)
@@ -133,9 +139,10 @@ async def _proxy_responses(request: web.Request) -> web.StreamResponse:
         return _error_response(502, f"llama.cpp connection failed: {type(exc).__name__}")
 
     LOGGER.info(
-        "responses status=%s web_tools=%s elapsed_ms=%d",
+        "responses status=%s web_tools=%s instruction_messages=%s elapsed_ms=%d",
         upstream.status,
         replacements,
+        normalized_instructions,
         int((time.monotonic() - started) * 1000),
     )
     content_type = upstream.headers.get("Content-Type", "")

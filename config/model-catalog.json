@@ -3,7 +3,7 @@
     {
       "slug": "qwen3.8-27b",
       "display_name": "Qwen3.8 27B (Altair)",
-      "description": "Qwen3.8 27B Q6_K served by llama.cpp on llama-server.",
+      "description": "Qwen3.8 27B served by llama.cpp on llama-server.",
       "default_reasoning_level": null,
       "supported_reasoning_levels": [],
       "shell_type": "shell_command",

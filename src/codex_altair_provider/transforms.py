@@ -79,6 +79,64 @@ WEB_TOOL_PARAMETERS: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+INSTRUCTION_ROLES = {"system", "developer"}
+
+
+def normalize_instruction_messages(payload: dict[str, Any]) -> int:
+    """Keep Qwen-compatible instructions at the beginning of Responses input.
+
+    Codex can append developer messages when permissions change or a turn is
+    interrupted. Qwen's llama.cpp chat template accepts instruction messages
+    only at the beginning, so collect them into one leading message while
+    preserving their content order and the order of every non-instruction item.
+    The payload is mutated in place and the number of collected messages is
+    returned for content-free diagnostics.
+    """
+
+    input_items = payload.get("input")
+    if not isinstance(input_items, list):
+        return 0
+
+    instructions: list[dict[str, Any]] = []
+    ordinary_items: list[Any] = []
+    for item in input_items:
+        if _is_instruction_message(item):
+            instructions.append(item)
+        else:
+            ordinary_items.append(item)
+
+    if not instructions:
+        return 0
+    if len(instructions) == 1 and input_items[0] is instructions[0]:
+        return 0
+
+    leading = copy.deepcopy(instructions[0])
+    if len(instructions) > 1:
+        leading["content"] = _merge_instruction_content(instructions)
+    input_items[:] = [leading, *ordinary_items]
+    return len(instructions)
+
+
+def _is_instruction_message(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and value.get("type") == "message"
+        and value.get("role") in INSTRUCTION_ROLES
+    )
+
+
+def _merge_instruction_content(messages: list[dict[str, Any]]) -> list[Any]:
+    merged: list[Any] = []
+    for index, message in enumerate(messages):
+        if index:
+            merged.append({"type": "input_text", "text": "\n\n"})
+        content = message.get("content")
+        if isinstance(content, list):
+            merged.extend(copy.deepcopy(content))
+        elif isinstance(content, str):
+            merged.append({"type": "input_text", "text": content})
+    return merged
+
 
 def flatten_web_namespace(payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
     """Return a copy with the one Codex web namespace expanded for llama.cpp."""
@@ -210,4 +268,3 @@ def _transform_sse_line(line: bytes) -> bytes:
     restore_web_namespace_calls(event)
     serialized = json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode()
     return prefix + b" " + serialized + carriage_return + newline
-

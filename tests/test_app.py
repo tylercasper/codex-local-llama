@@ -69,11 +69,32 @@ async def test_responses_proxy_flattens_request_and_restores_streamed_call() -> 
             tavily_client=FakeTavily(),
         )
         async with TestClient(TestServer(adapter)) as client:
-            response = await client.post("/v1/responses", json={"tools": [_namespace()]})
+            response = await client.post(
+                "/v1/responses",
+                json={
+                    "tools": [_namespace()],
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": "continue"}],
+                        },
+                        {
+                            "type": "message",
+                            "role": "developer",
+                            "content": [
+                                {"type": "input_text", "text": "permissions changed"}
+                            ],
+                        },
+                    ],
+                },
+            )
             body = await response.text()
 
     assert response.status == 200
     assert captured[0]["tools"][0]["name"] == "web_run"
+    assert captured[0]["input"][0]["role"] == "developer"
+    assert captured[0]["input"][1]["role"] == "user"
     assert '"name":"run"' in body
     assert '"namespace":"web"' in body
 

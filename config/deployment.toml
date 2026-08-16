@@ -1,0 +1,16 @@
+[remote]
+ssh_target = "llama-server"
+ssh_config = "~/.ssh/config"
+host = "127.0.0.1"
+port = 8001
+
+[local]
+host = "127.0.0.1"
+provider_port = 18000
+tunnel_port = 18001
+
+[model]
+id = "qwen3.8-27b"
+display_name = "Qwen3.8 27B (Altair)"
+description = "Qwen3.8 27B served by llama.cpp on llama-server."
+context_window = 262144
