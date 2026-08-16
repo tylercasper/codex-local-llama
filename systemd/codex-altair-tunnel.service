@@ -1,0 +1,21 @@
+[Unit]
+Description=SSH tunnel from Codex Altair provider to llama.cpp
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=example
+Environment=HOME=/home/example
+ExecStart=/usr/bin/ssh -NT -F /home/example/.ssh/config -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:18001:127.0.0.1:8001 llama-server
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
+

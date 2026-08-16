@@ -1,0 +1,25 @@
+[Unit]
+Description=Codex Altair Responses and standalone web-search adapter
+Requires=codex-altair-tunnel.service
+After=codex-altair-tunnel.service
+
+[Service]
+Type=simple
+User=example
+WorkingDirectory=/home/example/agent-sandbox/codex-altair-provider
+Environment=CODEX_ALTAIR_UPSTREAM_URL=http://127.0.0.1:18001
+Environment=PYTHONDONTWRITEBYTECODE=1
+LoadCredential=tavily_key:/etc/codex-altair/tavily.key
+ExecStart=/home/example/agent-sandbox/codex-altair-provider/.venv/bin/codex-altair-provider --host 127.0.0.1 --port 18000
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
+

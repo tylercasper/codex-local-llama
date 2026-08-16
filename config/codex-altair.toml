@@ -1,0 +1,44 @@
+model = "qwen3.8-27b"
+model_provider = "altair"
+model_catalog_json = "/home/example/.codex-altair/model-catalog.json"
+model_context_window = 262144
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "live"
+check_for_update_on_startup = false
+suppress_unstable_features_warning = true
+
+[sandbox_workspace_write]
+network_access = false
+
+[shell_environment_policy]
+ignore_default_excludes = false
+
+[agents]
+enabled = false
+
+[model_providers.altair]
+name = "Altair llama.cpp"
+base_url = "http://127.0.0.1:18000/v1"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+supports_standalone_web_search = true
+request_max_retries = 1
+stream_max_retries = 1
+stream_idle_timeout_ms = 900000
+
+[features]
+standalone_web_search = true
+apps = false
+plugins = false
+multi_agent = false
+image_generation = false
+computer_use = false
+browser_use = false
+goals = false
+shell_tool = true
+unified_exec = true
+
+[projects."/home/example/agent-sandbox/codex-altair-provider"]
+trust_level = "trusted"
