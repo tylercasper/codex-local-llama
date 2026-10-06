@@ -1,7 +1,8 @@
 # Desktop package inputs
 
-The installers use unmodified vendor desktop packages and retain each package's
-bundled Codex backend. Git contains only the manifests and installation code.
+The installers use unmodified vendor desktop packages and select the matching
+source-built Codex backend through a private launcher. Git contains only the
+manifests and installation code.
 Supply the archive for the GUI you intend to install in this directory:
 
 | Platform | Archive | Vendor package version |
@@ -22,5 +23,7 @@ user data, local configuration, and generated Codex Local launchers. The manifes
 hash identifies the exact packaged archive; repacking the same directory can
 produce a different hash and must be reviewed as an explicit manifest change.
 
-Keep the frontend and bundled backend from the same vendor package. Do not replace
-`resources/codex` with the separately pinned CLI binary during baseline setup.
+Keep each archive intact, including its bundled backend. The installer does not
+replace `resources/codex`: `CODEX_CLI_PATH` selects a shim that validates and runs
+the complete source package shared with the CLI. The compatibility manifest
+requires the source version to match the version shipped with each frontend.

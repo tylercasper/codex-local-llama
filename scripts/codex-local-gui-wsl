@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Adapt Windows filesystem paths sent by the GUI to its WSL app-server.
 
-Install beside the private GUI's resources/codex, and select with CODEX_CLI_PATH.
+Install beside gui_backend.py and its binding, and select with CODEX_CLI_PATH.
 The GUI's default-project creation currently sends Windows paths to Linux RPCs.
 """
 import json
@@ -11,6 +11,9 @@ import re
 import subprocess
 import sys
 import threading
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gui_backend import BINDING, backend_path, load_binding, sqlite_home
 
 
 def linux_path(value):
@@ -32,11 +35,15 @@ def translate(message):
     if not isinstance(params, dict):
         return message
     fields = ('path', 'sourcePath', 'destinationPath') if method.startswith('fs/') else ()
-    if method == 'process/spawn':
+    if method in ('process/spawn', 'thread/start', 'thread/resume', 'thread/fork', 'turn/start'):
         fields = ('cwd',)
     for field in fields:
         if field in params:
             params[field] = linux_path(params[field])
+    if method in ('thread/start', 'thread/resume', 'thread/fork', 'turn/start'):
+        roots = params.get('runtimeWorkspaceRoots')
+        if isinstance(roots, list):
+            params['runtimeWorkspaceRoots'] = [linux_path(root) for root in roots]
     if method in ('project/create', 'project/update', 'project/import'):
         roots = params.get('roots')
         if isinstance(roots, list):
@@ -47,11 +54,15 @@ def translate(message):
 
 
 def main():
-    # The GUI supplies its default WSL sqlite directory independently of CODEX_HOME.
-    # Override it here so this private deployment cannot share official history.
-    if os.environ.get('CODEX_HOME'):
-        os.environ['CODEX_SQLITE_HOME'] = str(Path(os.environ['CODEX_HOME']) / 'sqlite')
-    backend = str(Path(__file__).resolve().with_name('codex'))
+    try:
+        if not os.environ.get('CODEX_HOME'):
+            raise ValueError('CODEX_HOME must identify the private GUI profile')
+        home = linux_path(os.environ['CODEX_HOME'])
+        os.environ['CODEX_HOME'] = home
+        os.environ['CODEX_SQLITE_HOME'] = str(sqlite_home(home))
+        backend = str(backend_path(load_binding(Path(__file__).resolve().with_name(BINDING))))
+    except (OSError, ValueError, KeyError) as error:
+        raise SystemExit(f'Codex Local GUI backend: {error}')
     args = [backend, *sys.argv[1:]]
     if 'app-server' not in sys.argv[1:]:
         os.execv(backend, args)

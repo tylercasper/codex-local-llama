@@ -153,12 +153,23 @@ state_args=(--codex-home "$isolated_home")
 if $source_build; then
     state_args+=(--source-build)
 fi
-if [[ "$gui_mode" == --wsl-gui ]]; then
+existing_sqlite=$("$python_cmd" - "$isolated_home/config.toml" <<'PY'
+import pathlib, sys, tomllib
+path = pathlib.Path(sys.argv[1])
+print(tomllib.loads(path.read_text(encoding='utf-8-sig')).get('sqlite_home', '') if path.exists() else '')
+PY
+)
+if [[ -n "$existing_sqlite" ]]; then
+    state_args+=(--sqlite-home "$existing_sqlite")
+elif [[ "$gui_mode" == --wsl-gui ]]; then
     state_args+=(--sqlite-home "$home_dir/.local/state/codex-local/sqlite")
 fi
 bin_dir="$home_dir/.local/bin"
 ssh_path="$(command -v ssh || true)"
 [[ -n "$ssh_path" ]] || fail "required command not found: ssh"
+
+[[ -z "$gui_mode" || "$source_build" == true ]] \
+    || fail "GUI installation requires the matching source backend; official releases are CLI-only"
 
 render_dir="$(mktemp -d)"
 download_dir=""

@@ -73,7 +73,7 @@ else:
     record = json.loads((home / '.codex-local/compatibility.json').read_text())
     assert record['installed_cli']['origin'] == 'source'
     assert record['installed_cli']['package']['target'] == 'x86_64-unknown-linux-gnu'
-    assert record['desktop']['windows_wsl']['backend'] == 'bundled'
+    assert record['desktop']['windows_wsl']['backend'] == 'source'
     deployment = json.loads((home / '.codex-local/deployment.json').read_text())
     assert deployment['codex']['target'] == 'x86_64-unknown-linux-gnu'
     # A rerun validates/reuses the identical package instead of downloading a release.

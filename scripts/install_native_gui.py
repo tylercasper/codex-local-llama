@@ -17,6 +17,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from merge_gui_config import merge_gui_config
+from gui_backend import BINDING, validate_install
 
 RESTRICTION = Path("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
 
@@ -60,9 +61,11 @@ def launcher_text(runtime: Path, gui_home: Path) -> str:
     return f'''#!/bin/sh
 set -eu
 export CODEX_HOME={shlex.quote(str(gui_home))}
-export CODEX_SQLITE_HOME={shlex.quote(str(gui_home / 'sqlite'))}
 export CODEX_ELECTRON_USER_DATA_PATH={shlex.quote(str(gui_home / 'app-data'))}
-unset OPENAI_API_KEY OPENAI_BASE_URL CODEX_OSS_BASE_URL CODEX_OSS_PORT CODEX_CLI_PATH
+export CODEX_CLI_PATH={shlex.quote(str(runtime / 'gui/backend/codex-local-gui-wsl'))}
+unset OPENAI_API_KEY OPENAI_BASE_URL CODEX_OSS_BASE_URL CODEX_OSS_PORT CODEX_SQLITE_HOME
+export CODEX_APP_SERVER_FORCE_CLI=1
+unset CODEX_APP_SERVER_WS_URL CODEX_APP_SERVER_USE_LOCAL_DAEMON
 # Console shells may omit the display environment supplied by WSLg.
 # Keep existing desktop/remote-desktop sessions intact.
 if [ -z "${{DISPLAY:-}}" ] && [ -z "${{WAYLAND_DISPLAY:-}}" ] && [ -S /mnt/wslg/.X11-unix/X0 ] && [ -S /tmp/.X11-unix/X0 ]; then
@@ -115,6 +118,7 @@ def install(args):
     rendered = (args.assets_dir / "config.toml").read_text()
     tomllib.loads(rendered)
     merged = merge_gui_config(config.read_text(), rendered) if config.exists() else rendered
+    validate_install(args.assets_dir / BINDING, args.dry_run)
     gui_root = args.runtime_root / "gui"
     release = gui_root / "releases" / (manifest["version"] + "-" + manifest["sha256"][:12])
     executable = release / "usr/lib/chatgpt/ChatGPT"
@@ -179,6 +183,9 @@ def install(args):
         desktop: (desktop_text(launcher, gui_root / "current/usr/lib/chatgpt/resources/icon-chatgpt.png").encode(), 0o644),
     }
     writes[config] = (merged.encode(), 0o600)
+    for name in ("codex-local-gui-wsl", "gui_backend.py"):
+        writes[gui_root / "backend" / name] = ((Path(__file__).parent / name).read_bytes(), 0o755 if name == "codex-local-gui-wsl" else 0o644)
+    writes[gui_root / "backend" / BINDING] = ((args.assets_dir / BINDING).read_bytes(), 0o600)
     compatibility = args.assets_dir / "compatibility.json"
     if compatibility.exists():
         writes[args.gui_home / "compatibility.json"] = (compatibility.read_bytes(), 0o600)

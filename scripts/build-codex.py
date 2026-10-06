@@ -66,6 +66,7 @@ def main():
             lockfile.write_bytes(normalized)
             try:
                 env = dict(os.environ)
+                env["CODEX_REPO_ROOT"] = str(source)
                 env.setdefault("CARGO_TARGET_DIR", str(build_root / "target"))
                 env["CARGO_BUILD_JOBS"] = str(args.jobs)
                 env.setdefault("CARGO_NET_GIT_FETCH_WITH_CLI", "true")

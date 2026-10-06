@@ -23,6 +23,9 @@ PY
 for asset in config.toml model-catalog.json model-instructions.md; do
     [[ -f "$assets_dir/$asset" ]] || { echo "Missing GUI asset: $asset" >&2; exit 1; }
 done
+validation_args=()
+if "$dry_run"; then validation_args+=(--dry-run); fi
+python3 "$repo/scripts/gui_backend.py" "$assets_dir/codex-local-backend.json" "${validation_args[@]}"
 if [[ -z "${WSL_DISTRO_NAME:-}" ]]; then
     # Service-launched agents can lose WSL_DISTRO_NAME; wslpath retains the real distro.
     distro_root=$(wslpath -w / 2>/dev/null || true)

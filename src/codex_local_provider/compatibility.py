@@ -46,8 +46,10 @@ def load_manifest(root: Path) -> dict:
             raise ValueError("Desktop archive must have a SHA-256 pin")
         if Path(package["asset"]).name != package["asset"]:
             raise ValueError("Desktop archive name must be a filename")
-        if desktop["backend"] != "bundled":
-            raise ValueError("This baseline only supports bundled desktop backends")
+        if desktop["backend"] not in {"bundled", "source"}:
+            raise ValueError("Unsupported desktop backend")
+        if desktop["backend"] == "source" and desktop["bundled_backend_version"] != codex["version"]:
+            raise ValueError("Desktop and source backend versions must match")
     return manifest
 
 

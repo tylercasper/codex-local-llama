@@ -25,6 +25,9 @@ def merge_gui_config(existing: str, rendered: str) -> str:
     original = tomllib.loads(existing)
     provider = source.get("model_providers", {}).get("llamacpp", {})
     targets = {(): {k: source[k] for k in MANAGED_KEYS if k in source}, PROVIDER_PATH: provider}
+    # An upgrade must not silently switch the history database to an empty one.
+    if "sqlite_home" in original:
+        targets[()].pop("sqlite_home", None)
     replacements = {}
     path = ()
     # Values come directly from validated renderer output, retaining TOML syntax.

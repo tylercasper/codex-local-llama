@@ -118,6 +118,12 @@ def render_install_assets(
         _reject_newline(path.as_posix(), "path")
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    if source_build:
+        (output_dir / "codex-local-backend.json").write_text(json.dumps({
+            "schema_version": 1, "backend": "source",
+            "package": str(runtime_root / "codex/current"), "source": pin,
+            "frontend_backend_version": pin["version"],
+        }, indent=2) + "\n")
     isolated_home = codex_home if codex_home is not None else home / ".codex-local"
     for path in (isolated_home, sqlite_home):
         if path is not None:
@@ -394,6 +400,9 @@ def render_gui_assets(assets_dir: Path, output_dir: Path) -> None:
     (output_dir / "config.toml").write_text(profile, encoding="utf-8")
     for filename in ("model-catalog.json", "model-instructions.md"):
         shutil.copyfile(assets_dir / filename, output_dir / filename)
+    binding = assets_dir / "codex-local-backend.json"
+    if binding.exists():
+        shutil.copyfile(binding, output_dir / binding.name)
 
 
 def main() -> None:

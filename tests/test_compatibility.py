@@ -40,7 +40,7 @@ def repository(tmp_path):
     source = root / 'vendor/codex'
     (source / 'codex-rs').mkdir(parents=True)
     git(source, 'init', '-q')
-    (source / 'codex-rs/Cargo.toml').write_text('[workspace.package]\nversion = "0.147.0"\n')
+    (source / 'codex-rs/Cargo.toml').write_text('[workspace.package]\nversion = ' + json.dumps(load_manifest(root)['codex']['version']) + '\n')
     (source / 'codex-rs/rust-toolchain.toml').write_text('[toolchain]\nchannel = "1.95.0"\n')
     (source / 'codex-rs/Cargo.lock').write_text('version = 4\n[[package]]\nname = "local"\nversion = "0.0.0"\n')
     commit(source)
@@ -78,7 +78,7 @@ def make_package(directory, manifest):
     for name in REQUIRED_FILES:
         path = directory / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text('#!/bin/sh\necho codex-cli 0.147.0\n')
+        path.write_text('#!/bin/sh\necho codex-cli ' + manifest['codex']['version'] + '\n')
         path.chmod(0o755)
     (directory / 'codex-package.json').write_text(json.dumps({
         'layoutVersion': 1, 'version': manifest['codex']['version'],
@@ -169,6 +169,7 @@ def test_build_restores_source_lock_and_only_publishes_complete_packages(reposit
     def run(command, **kwargs):
         if len(command) > 1 and str(command[1]).endswith('scripts/build_codex_package.py'):
             builds.append(command)
+            assert kwargs['env']['CODEX_REPO_ROOT'] == str(source)
             assert lockfile.read_bytes() != original
             assert str(command[command.index('--cargo') + 1]).endswith('scripts/cargo-locked')
             if fail_build:

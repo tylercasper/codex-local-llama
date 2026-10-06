@@ -23,7 +23,7 @@ def test_gui_assets_reuse_deployment_without_installed_home(tmp_path):
         repository_root=ROOT, deployment_path=ROOT / 'config/deployment.toml',
         release_path=ROOT / 'config/codex-release.json', output_dir=assets,
         home=tmp_path / 'alice', user='alice', runtime_root=tmp_path / 'runtime',
-        ssh_path=Path('/usr/bin/ssh'),
+        ssh_path=Path('/usr/bin/ssh'), source_build=True,
     )
     destination = home / 'gui'
     render_gui_assets(assets, destination)
@@ -34,6 +34,9 @@ def test_gui_assets_reuse_deployment_without_installed_home(tmp_path):
     assert config['model_catalog_json'] == 'model-catalog.json'
     assert config['model_instructions_file'] == 'model-instructions.md'
     assert config['sandbox_mode'] == 'workspace-write'
+    binding = json.loads((destination / 'codex-local-backend.json').read_text())
+    assert binding['package'] == str(tmp_path / 'runtime/codex/current')
+    assert binding['source']['version'] == binding['frontend_backend_version']
     assert json.loads((destination / 'model-catalog.json').read_text()) == json.loads(
         (assets / 'model-catalog.json').read_text())
     assert (destination / 'model-instructions.md').read_bytes() == (

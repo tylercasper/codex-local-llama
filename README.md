@@ -13,14 +13,14 @@ git submodule update --init --recursive
 
 Launch `codex-local` or the **Codex Local** application shortcut. GUI packages must be supplied locally as described in [`bundles/gui/README.md`](bundles/gui/README.md); their manifests are versioned, but the archives are excluded from Git. Existing official installations are preserved. Run `./scripts/install-local.sh --help` for configuration and verification options.
 
-The CLI is built from the official Codex `0.147.0` revision pinned by
+The CLI and both GUI backends are built from official Codex `0.153.4`, pinned by
 `vendor/codex` and [`config/compatibility.json`](config/compatibility.json).
 The default source target is `x86_64-unknown-linux-gnu`; build it on the Linux
-system where it will run. This baseline retains each desktop package's bundled
-backend. Both recorded GUI packages include backend `0.153.4`; GUI pairing with a
-source-built backend remains pending and is explicitly recorded in the manifest.
+system where it will run. Both recorded desktop packages shipped with backend
+`0.153.4`. Their frontend archives remain unchanged; the managed launchers select
+the complete source package at the same `codex/current` link used by the CLI.
 
-The Windows launcher starts the bundled backend through WSL normally. The
+The Windows launcher starts the source backend through WSL normally. The
 temporary persistent WebSocket app-server used to recover a broken WSL launch
 is not part of this installer.
 
@@ -42,7 +42,11 @@ provided. The package includes `codex`, `codex-code-mode-host`, `bwrap`, `rg`, a
 the upstream shell resource. `codex-local-build.json` records its source pin,
 toolchain, resolved compatibility manifest, and file checksums. Installation
 checks those fingerprints and uses a separate versioned runtime directory.
-The previous official package is preserved.
+Previous installed packages are preserved. GUI installation requires a matching
+source package and validates its complete fingerprints. At launch, the GUI checks
+the installed package's source pin against its own binding and fails explicitly
+if they differ. Updating the CLI independently cannot silently switch the GUI to
+an incompatible backend. Update both with `--gui` or `--wsl-gui`.
 
 The release tag's Cargo lockfile retains placeholder versions for workspace
 crates. The builder temporarily normalizes only those local version fields,
@@ -57,11 +61,11 @@ To select the previous official binary distribution explicitly:
 ./scripts/install-local.sh --codex-release-dir /path/to/official-package
 ```
 
-That fallback retains the original musl archive pin in
-[`config/codex-release.json`](config/codex-release.json). The source package is
-a native GNU/Linux build of the same revision, not a byte-identical copy of the
-official archive. `--dry-run` renders the selected configuration without compiling
-or changing services.
+That CLI-only fallback retains the original `0.147.0` musl archive pin in
+[`config/codex-release.json`](config/codex-release.json). It cannot be combined
+with GUI installation. An existing source-bound GUI will refuse that older CLI
+until the matching source package is restored. `--dry-run` renders the selected
+configuration without compiling or changing services.
 
 ## Compatibility record
 
@@ -80,8 +84,9 @@ Installation saves the resolved record as `compatibility.json` in the selected
 Codex home. Source packages retain their build record in the runtime directory.
 Passing acceptance results belong with the tested Git commit/release; this
 manifest does not itself certify that tests passed. The current stage is
-`cli-source-baseline`, with desktop backends still supplied by their vendor
-packages. Source/backend synchronization is a separate acceptance milestone.
+`synchronized-source`: CLI and desktop select the same official source revision.
+The per-platform validation fields distinguish protocol checks from interactive
+GUI acceptance; version alignment alone is not a GUI test.
 
 ## Shared Windows GUI and WSL CLI home
 
@@ -98,6 +103,12 @@ Both WSL backends use the documented `sqlite_home` setting to share
 while the Windows GUI retains its own desktop database under the Windows home.
 Skills, session transcripts, and model assets live in the shared Windows home.
 The Linux-native GUI installed by `--gui` keeps its separate home.
+
+Upgrades preserve an existing `sqlite_home` value, session transcripts, desktop
+state, and Electron user-data directory. The backend shim reads that configured
+database path instead of substituting a new directory. Back up the existing home
+and SQLite databases before changing component versions; SQLite's backup API
+captures committed WAL contents, unlike a plain copy of a live database file.
 
 Existing separate homes require a migration before switching: close both local
 clients, back up their homes, preserve the Windows GUI's settings and desktop

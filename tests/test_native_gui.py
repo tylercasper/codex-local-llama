@@ -3,6 +3,8 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+from codex_local_provider.compatibility import load_manifest
+from test_compatibility import make_package
 import subprocess
 
 import pytest
@@ -43,6 +45,12 @@ def deployment(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "run", run)
     monkeypatch.setattr(module.subprocess, "run", lambda *a, **kw: subprocess.CompletedProcess(a, 0, "", ""))
     args = argparse.Namespace(assets_dir=assets, runtime_root=tmp_path / "runtime", gui_home=tmp_path / "gui-home", home=tmp_path / "home", bundle_dir=bundle, dry_run=False)
+    pin = load_manifest(Path(__file__).resolve().parents[1])['codex']
+    package = make_package(tmp_path / 'source-package', {'codex': pin})
+    (assets / 'codex-local-backend.json').write_text(json.dumps({
+        'schema_version': 1, 'backend': 'source', 'package': str(package),
+        'source': pin, 'frontend_backend_version': pin['version'],
+    }))
     return args, calls
 
 
@@ -80,7 +88,9 @@ def test_install_and_rerun_preserve_user_data(deployment):
     assert len([c for c in calls if c[:2] == ("dpkg-deb", "-x")]) == 1
     launcher = (args.home / ".local/bin/codex-local-gui").read_text()
     assert "CODEX_HOME=" in launcher
-    assert "CODEX_SQLITE_HOME=" in launcher
+    assert "CODEX_CLI_PATH=" in launcher
+    assert "CODEX_APP_SERVER_FORCE_CLI=1" in launcher
+    assert "unset CODEX_APP_SERVER_WS_URL CODEX_APP_SERVER_USE_LOCAL_DAEMON" in launcher
     assert "CODEX_ELECTRON_USER_DATA_PATH=" in launcher
     assert "--no-sandbox" not in launcher
     assert str(args.assets_dir) not in launcher

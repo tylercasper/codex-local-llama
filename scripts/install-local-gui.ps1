@@ -21,7 +21,7 @@ if (Test-Path $root) {
 } elseif (((Test-Path $configHome) -and -not (Test-Path (Join-Path $configHome 'deployment.json'))) -or (Test-Path $guiData) -or (Test-Path $shortcutPath)) {
     throw 'Existing unmanaged Codex Local data or shortcut; refusing to take ownership.'
 }
-foreach ($name in @('config.toml', 'model-catalog.json', 'model-instructions.md')) {
+foreach ($name in @('config.toml', 'model-catalog.json', 'model-instructions.md', 'codex-local-backend.json')) {
     if (-not (Test-Path (Join-Path $LocalConfigDirectory $name))) { throw "Missing $name" }
 }
 $manifest = Get-Content $BundleManifest -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -60,6 +60,8 @@ try {
     $config = Get-Content $mergedConfigPath -Raw -Encoding UTF8
     Remove-Item $mergedConfigPath
     Copy-Item (Join-Path $PSScriptRoot 'codex-local-gui-wsl') (Join-Path $stage 'resources\codex-local-gui-wsl')
+    Copy-Item (Join-Path $PSScriptRoot 'gui_backend.py') (Join-Path $stage 'resources\gui_backend.py')
+    Copy-Item (Join-Path $LocalConfigDirectory 'codex-local-backend.json') (Join-Path $stage 'resources\codex-local-backend.json')
     $ini = Join-Path $stage 'resources\owl-app.ini'
     if (Test-Path $ini) {
         $text = (Get-Content $ini -Raw -Encoding UTF8).Replace('UserDataDirectoryName=Codex', 'UserDataDirectoryName=Codex Local')
@@ -74,9 +76,10 @@ $actualDistro = (& wsl.exe --exec printenv WSL_DISTRO_NAME | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or $actualDistro -ne $expectedDistro) { throw "Codex Local requires the default WSL distribution to be $expectedDistro." }
 Remove-Item Env:WSL_DISTRO_NAME -ErrorAction SilentlyContinue
 $env:CODEX_CLI_PATH = Join-Path $PSScriptRoot 'resources\codex-local-gui-wsl'
-foreach ($name in @('OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_OSS_BASE_URL', 'CODEX_OSS_PORT')) {
+foreach ($name in @('OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_OSS_BASE_URL', 'CODEX_OSS_PORT', 'CODEX_APP_SERVER_WS_URL', 'CODEX_APP_SERVER_USE_LOCAL_DAEMON')) {
     Remove-Item "Env:$name" -ErrorAction SilentlyContinue
 }
+$env:CODEX_APP_SERVER_FORCE_CLI = '1'
 Start-Process -FilePath (Join-Path $PSScriptRoot 'ChatGPT.exe') -WorkingDirectory $PSScriptRoot -ArgumentList ('--user-data-dir="' + $env:CODEX_ELECTRON_USER_DATA_PATH + '"')
 '@
     $launcher = $launcher.Replace('__DISTRO__', ("'" + $WslDistribution.Replace("'", "''") + "'"))

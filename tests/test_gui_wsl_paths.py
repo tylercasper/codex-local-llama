@@ -43,11 +43,24 @@ def test_project_registration_and_editing():
         assert result['params']['metadata'] == {'description': r'C:\leave-this-unchanged'}
 
 
+def test_thread_paths_are_translated_without_rewriting_prompt(monkeypatch):
+    monkeypatch.setenv('WSL_DISTRO_NAME', 'Ubuntu')
+    for method in ('thread/start', 'thread/resume', 'thread/fork', 'turn/start'):
+        params = {'cwd': r'C:\repo', 'runtimeWorkspaceRoots': [r'\\wsl$\Ubuntu\srv\repo'],
+                  'input': [{'type': 'text', 'text': r'C:\keep-this-text'}]}
+        result = shim.translate({'method': method, 'params': params})['params']
+        assert result['cwd'] == '/mnt/c/repo'
+        assert result['runtimeWorkspaceRoots'] == ['/srv/repo']
+        assert result['input'][0]['text'] == r'C:\keep-this-text'
+
+
 def test_wrapper_isolates_sqlite(monkeypatch, tmp_path):
     import os
     monkeypatch.setenv('CODEX_HOME', str(tmp_path / 'private-gui'))
     monkeypatch.setenv('CODEX_SQLITE_HOME', '/home/shared/.codex')
     monkeypatch.setattr(shim.sys, 'argv', ['codex-local-gui-wsl', '--version'])
+    monkeypatch.setitem(shim.main.__globals__, 'load_binding', lambda path: {})
+    monkeypatch.setitem(shim.main.__globals__, 'backend_path', lambda binding: Path('/verified/bin/codex'))
     calls = []
     monkeypatch.setattr(os, 'execv', lambda backend, args: calls.append((backend, args)))
     # execv normally never returns. Stop at the attempted handoff.
