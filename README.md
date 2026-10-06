@@ -85,8 +85,14 @@ Codex home. Source packages retain their build record in the runtime directory.
 Passing acceptance results belong with the tested Git commit/release; this
 manifest does not itself certify that tests passed. The current stage is
 `synchronized-source`: CLI and desktop select the same official source revision.
-The per-platform validation fields distinguish protocol checks from interactive
-GUI acceptance; version alignment alone is not a GUI test.
+The per-platform validation fields distinguish protocol checks from desktop UI
+acceptance; version alignment alone is not a GUI test. The current Linux pairing
+passed rendering, local-provider selection, and project creation. The Windows
+pairing passed rendering and local-provider selection through a machine-local
+recovery transport; normal Windows-to-WSL process launch could not be retested
+because that host's WSL service rejects new process launches. Both backends read
+the same existing conversation set with identical transcript turn counts. Local
+llama.cpp inference and sandboxed file tools also passed on the source build.
 
 ## Shared Windows GUI and WSL CLI home
 

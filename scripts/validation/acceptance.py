@@ -207,7 +207,7 @@ def gui_check(launcher, output, env):
 
             call('Page.bringToFront')
             # A nested-virtualization desktop may take longer to finish its first mount.
-            wait_for('document.body.innerText.trim().length > 30', timeout=180)
+            wait_for('(document.body?.innerText.trim().length ?? 0) > 30', timeout=180)
             text = evaluate('document.body.innerText') or ''
             if ('sign in' in text.lower() or 'log in' in text.lower()) and 'sign up' in text.lower():
                 raise RuntimeError('GUI is showing authentication onboarding')

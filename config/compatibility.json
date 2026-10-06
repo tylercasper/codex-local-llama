@@ -14,13 +14,13 @@
     "linux": {
       "manifest": "bundles/gui/linux.json",
       "backend": "source",
-      "source_backend_validation": "pending",
+      "source_backend_validation": "gui-verified",
       "bundled_backend_version": "0.153.4"
     },
     "windows_wsl": {
       "manifest": "bundles/gui/windows.json",
       "backend": "source",
-      "source_backend_validation": "pending",
+      "source_backend_validation": "gui-verified-with-local-recovery-transport",
       "bundled_backend_version": "0.153.4"
     }
   },
