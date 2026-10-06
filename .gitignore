@@ -9,3 +9,4 @@ htmlcov/
 # Vendor desktop packages are supplied locally; commit only their manifests.
 bundles/gui/*.deb
 bundles/gui/*.tar.gz
+.build/

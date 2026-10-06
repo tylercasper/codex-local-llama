@@ -2,9 +2,10 @@
 
 Install Codex with the model and connection configured in [`config/deployment.toml`](config/deployment.toml). Requires x86_64 Linux, Python 3.12+, `uv`, systemd, sudo, and working SSH access to the configured server. The checked-in `llama-server` SSH alias is a placeholder; configure it locally or pass `--config /path/to/deployment.toml`. Web search works without a key; optionally supply Tavily with `--tavily-key-file PATH`, with automatic keyless fallback.
 
-Run one command from this checkout:
+Initialize the pinned backend source, then install:
 
 ```bash
+git submodule update --init --recursive
 ./scripts/install-local.sh            # CLI only
 ./scripts/install-local.sh --gui      # Native GUI and CLI
 ./scripts/install-local.sh --wsl-gui  # Windows GUI with WSL execution, and CLI
@@ -12,15 +13,75 @@ Run one command from this checkout:
 
 Launch `codex-local` or the **Codex Local** application shortcut. GUI packages must be supplied locally as described in [`bundles/gui/README.md`](bundles/gui/README.md); their manifests are versioned, but the archives are excluded from Git. Existing official installations are preserved. Run `./scripts/install-local.sh --help` for configuration and verification options.
 
-The standalone CLI remains pinned to official Codex `0.147.0` in
-[`config/codex-release.json`](config/codex-release.json). Each desktop package
-uses its own bundled backend. The Windows package recorded here includes
-backend `0.153.4`; installing the CLI does not replace that backend. The official
-Codex source submodule and source-build installation are not implemented yet.
+The CLI is built from the official Codex `0.147.0` revision pinned by
+`vendor/codex` and [`config/compatibility.json`](config/compatibility.json).
+The default source target is `x86_64-unknown-linux-gnu`; build it on the Linux
+system where it will run. This baseline retains each desktop package's bundled
+backend. Both recorded GUI packages include backend `0.153.4`; GUI pairing with a
+source-built backend remains pending and is explicitly recorded in the manifest.
 
 The Windows launcher starts the bundled backend through WSL normally. The
 temporary persistent WebSocket app-server used to recover a broken WSL launch
 is not part of this installer.
+
+## Building and selecting the CLI
+
+Install the toolchain recorded in `vendor/codex/codex-rs/rust-toolchain.toml`
+(currently Rust 1.95.0). Ubuntu build prerequisites are a C/C++ compiler, CMake,
+pkg-config, `libcap-dev`, `libssl-dev`, and `protobuf-compiler`. The upstream
+builder downloads checksum-verified V8, ripgrep, and zsh artifacts. Rust crate
+dependencies are locked. Building does not modify installed apps or services.
+
+```bash
+python3 scripts/build-codex.py --jobs 2 --output /path/to/source-package
+./scripts/install-local.sh --codex-source-package /path/to/source-package
+```
+
+The installer builds that package automatically when no package argument is
+provided. The package includes `codex`, `codex-code-mode-host`, `bwrap`, `rg`, and
+the upstream shell resource. `codex-local-build.json` records its source pin,
+toolchain, resolved compatibility manifest, and file checksums. Installation
+checks those fingerprints and uses a separate versioned runtime directory.
+The previous official package is preserved.
+
+The release tag's Cargo lockfile retains placeholder versions for workspace
+crates. The builder temporarily normalizes only those local version fields,
+builds with `--locked`, and restores the upstream file. External dependency
+versions are not updated. Concurrent or unexpected edits cause a failure.
+
+To select the previous official binary distribution explicitly:
+
+```bash
+./scripts/install-local.sh --official-release
+# Or provide the already-extracted official package:
+./scripts/install-local.sh --codex-release-dir /path/to/official-package
+```
+
+That fallback retains the original musl archive pin in
+[`config/codex-release.json`](config/codex-release.json). The source package is
+a native GNU/Linux build of the same revision, not a byte-identical copy of the
+official archive. `--dry-run` renders the selected configuration without compiling
+or changing services.
+
+## Compatibility record
+
+`config/compatibility.json`, the Git submodule entry, and the GUI archive
+manifests together identify the component set. The reference inference record
+pins llama.cpp, model/projector checksums, and the chat template without hostnames,
+addresses, or credentials. Other inference servers can be configured locally;
+the reference describes the configuration used for acceptance.
+
+```bash
+PYTHONPATH=src python3 -m codex_local_provider.compatibility check
+PYTHONPATH=src python3 -m codex_local_provider.compatibility resolve
+```
+
+Installation saves the resolved record as `compatibility.json` in the selected
+Codex home. Source packages retain their build record in the runtime directory.
+Passing acceptance results belong with the tested Git commit/release; this
+manifest does not itself certify that tests passed. The current stage is
+`cli-source-baseline`, with desktop backends still supplied by their vendor
+packages. Source/backend synchronization is a separate acceptance milestone.
 
 ## Shared Windows GUI and WSL CLI home
 

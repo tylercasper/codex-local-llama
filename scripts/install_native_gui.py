@@ -179,6 +179,9 @@ def install(args):
         desktop: (desktop_text(launcher, gui_root / "current/usr/lib/chatgpt/resources/icon-chatgpt.png").encode(), 0o644),
     }
     writes[config] = (merged.encode(), 0o600)
+    compatibility = args.assets_dir / "compatibility.json"
+    if compatibility.exists():
+        writes[args.gui_home / "compatibility.json"] = (compatibility.read_bytes(), 0o600)
     previous = {p: (p.read_bytes(), p.stat().st_mode & 0o777) if p.exists() else None for p in writes}
     old_target = os.readlink(current) if current.is_symlink() else None
     next_link = gui_root / (".current-" + str(os.getpid()))

@@ -6,7 +6,7 @@ import json
 import re
 import shutil
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -104,9 +104,14 @@ def render_install_assets(
     ssh_path: Path,
     codex_home: Path | None = None,
     sqlite_home: Path | None = None,
+    source_build: bool = False,
 ) -> None:
     deployment = load_deployment(deployment_path, home=home)
     release = load_release(release_path)
+    if source_build:
+        from .compatibility import load_manifest
+        pin = load_manifest(repository_root)["codex"]
+        release = replace(release, version=pin["version"], target=pin["target"])
     if not USER_PATTERN.fullmatch(user):
         raise ValueError(f"Unsupported service user name: {user!r}")
     for path in (repository_root, output_dir, home, runtime_root, ssh_path):
@@ -408,6 +413,7 @@ def main() -> None:
     render.add_argument("--ssh-path", type=Path, required=True)
     render.add_argument("--codex-home", type=Path)
     render.add_argument("--sqlite-home", type=Path)
+    render.add_argument("--source-build", action="store_true")
 
     validate = subparsers.add_parser("validate-release")
     validate.add_argument("--release", type=Path, required=True)
@@ -430,6 +436,7 @@ def main() -> None:
             ssh_path=args.ssh_path.resolve(),
             codex_home=args.codex_home.resolve() if args.codex_home else None,
             sqlite_home=args.sqlite_home.resolve() if args.sqlite_home else None,
+            source_build=args.source_build,
         )
     elif args.command == "render-gui":
         render_gui_assets(args.assets_dir.resolve(), args.output_dir.resolve())

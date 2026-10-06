@@ -45,6 +45,9 @@ def installer_repo(tmp_path):
     repo = tmp_path / 'repo'
     for directory in ('config', 'prompts', 'src', 'systemd'):
         shutil.copytree(ROOT / directory, repo / directory, ignore=shutil.ignore_patterns('__pycache__'))
+    (repo / 'bundles/gui').mkdir(parents=True)
+    for manifest in ('linux.json', 'windows.json'):
+        shutil.copyfile(ROOT / 'bundles/gui' / manifest, repo / 'bundles/gui' / manifest)
     (repo / 'scripts').mkdir()
     shutil.copyfile(ROOT / 'scripts/install-local.sh', repo / 'scripts/install-local.sh')
     for name in ('native', 'wsl'):

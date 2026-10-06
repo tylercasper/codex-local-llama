@@ -13,6 +13,8 @@ Options:
   --config PATH             Deployment TOML (default: config/deployment.toml)
   --codex-home PATH         Shared configuration and session directory
   --codex-release-dir PATH  Use an already-extracted pinned Codex package
+  --official-release        Use the pinned official CLI archive instead of source
+  --codex-source-package PATH  Use a verified package built by scripts/build-codex.py
   --tavily-key-file PATH    Install a Tavily API key from this file
   --dry-run                 Render and validate without changing the system
   -h, --help                Show this help
@@ -33,10 +35,25 @@ deployment_cli() {
         "$python_cmd" -m codex_local_provider.deployment "$@"
 }
 
+compatibility_cli() {
+    PYTHONPATH="$repo_root/src${PYTHONPATH:+:$PYTHONPATH}" \
+        "$python_cmd" -m codex_local_provider.compatibility --repository-root "$repo_root" "$@"
+}
+
+validate_codex_package() {
+    if $source_build; then
+        compatibility_cli validate-package "$1"
+    else
+        deployment_cli validate-release --release "$release_path" "$1"
+    fi
+}
+
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 deployment_path="$repo_root/config/deployment.toml"
 release_path="$repo_root/config/codex-release.json"
 codex_release_dir=""
+codex_source_package=""
+source_build=true
 tavily_key_file=""
 dry_run=false
 gui_mode=""
@@ -63,6 +80,16 @@ while (($#)); do
         --codex-release-dir)
             (($# >= 2)) || fail "--codex-release-dir requires a path"
             codex_release_dir="$2"
+            source_build=false
+            shift 2
+            ;;
+        --official-release)
+            source_build=false
+            shift
+            ;;
+        --codex-source-package)
+            (($# >= 2)) || fail "--codex-source-package requires a path"
+            codex_source_package="$2"
             shift 2
             ;;
         --tavily-key-file)
@@ -91,6 +118,10 @@ done
     || fail "Tavily key file is not readable: $tavily_key_file"
 [[ -z "$codex_release_dir" || -d "$codex_release_dir" ]] \
     || fail "Codex release directory does not exist: $codex_release_dir"
+[[ -z "$codex_source_package" || "$source_build" == true ]] \
+    || fail "--codex-source-package cannot be combined with an official release"
+[[ -z "$codex_source_package" || -d "$codex_source_package" ]] \
+    || fail "Source package directory does not exist: $codex_source_package"
 
 require_command python3
 python_cmd="$(command -v python3)"
@@ -119,6 +150,9 @@ if [[ "$gui_mode" == --wsl-gui && ! "$isolated_home" =~ ^/mnt/[a-zA-Z]/ ]]; then
     fail "--wsl-gui requires a Windows-backed --codex-home (for example /mnt/c/Users/you/.codex-local)"
 fi
 state_args=(--codex-home "$isolated_home")
+if $source_build; then
+    state_args+=(--source-build)
+fi
 if [[ "$gui_mode" == --wsl-gui ]]; then
     state_args+=(--sqlite-home "$home_dir/.local/state/codex-local/sqlite")
 fi
@@ -150,6 +184,9 @@ deployment_cli render \
 if [[ -n "$codex_release_dir" ]]; then
     deployment_cli validate-release \
         --release "$release_path" "$codex_release_dir"
+fi
+if [[ -n "$codex_source_package" ]]; then
+    compatibility_cli validate-package "$codex_source_package"
 fi
 
 mapfile -t deployment_values < <(
@@ -197,7 +234,9 @@ if $dry_run; then
     echo "  provider: http://$local_host:$provider_port/v1"
     echo "  model: $model_id"
     echo "  Codex: $codex_version ($codex_target)"
-    if [[ -n "$codex_release_dir" ]]; then
+    if $source_build; then
+        echo "  Codex source: pinned submodule (GNU/Linux package; build skipped in dry run)"
+    elif [[ -n "$codex_release_dir" ]]; then
         echo "  Codex source: $codex_release_dir (validated)"
     else
         echo "  Codex source: pinned official release download"
@@ -210,6 +249,13 @@ fi
 for command_name in uv curl tar sha256sum systemctl sudo install cp mv ln find grep awk; do
     require_command "$command_name"
 done
+if $source_build; then
+    if [[ -z "$codex_source_package" ]]; then
+        codex_source_package="$repo_root/.build/packages/$(compatibility_cli package-name)"
+        "$python_cmd" "$repo_root/scripts/build-codex.py" --output "$codex_source_package"
+    fi
+    compatibility_cli validate-package "$codex_source_package"
+fi
 [[ -r "$ssh_config" ]] || fail "SSH config is not readable: $ssh_config"
 ssh -F "$ssh_config" -o BatchMode=yes "$ssh_target" true \
     || fail "non-interactive SSH preflight failed for $ssh_target"
@@ -239,6 +285,10 @@ fi
 ln -sfn "releases/$provider_version" "$runtime_root/provider/current"
 
 codex_release_name="$codex_version-$codex_target"
+if $source_build; then
+    build_digest="$(sha256sum "$codex_source_package/codex-local-build.json" | awk '{print $1}')"
+    codex_release_name="$(compatibility_cli package-name)-${build_digest:0:12}"
+fi
 codex_releases="$runtime_root/codex/releases"
 installed_codex_release="$codex_releases/$codex_release_name"
 install -d -m 0755 "$codex_releases"
@@ -246,7 +296,9 @@ if [[ ! -d "$installed_codex_release" ]]; then
     download_dir="$(mktemp -d)"
     extracted_dir="$download_dir/extracted"
     install -d -m 0755 "$extracted_dir"
-    if [[ -n "$codex_release_dir" ]]; then
+    if $source_build; then
+        cp -a -- "$codex_source_package/." "$extracted_dir/"
+    elif [[ -n "$codex_release_dir" ]]; then
         cp -a -- "$codex_release_dir/." "$extracted_dir/"
     else
         mapfile -t release_values < <(
@@ -280,12 +332,10 @@ print(p["url"]); print(p["sha256"]); print(p["asset"])
             extracted_dir="$normalized_dir"
         fi
     fi
-    deployment_cli validate-release \
-        --release "$release_path" "$extracted_dir"
+    validate_codex_package "$extracted_dir"
     mv -- "$extracted_dir" "$installed_codex_release"
 fi
-deployment_cli validate-release \
-    --release "$release_path" "$installed_codex_release"
+validate_codex_package "$installed_codex_release"
 "$installed_codex_release/bin/codex" --version | grep -F "$codex_version" >/dev/null \
     || fail "installed Codex binary did not report version $codex_version"
 "$python_cmd" "$repo_root/scripts/install_cli_apparmor.py" "$installed_codex_release/bin/codex"
@@ -299,6 +349,24 @@ install -m 0600 "$render_dir/local.config.toml" "$isolated_home/local.config.tom
 install -m 0600 "$render_dir/model-catalog.json" "$isolated_home/model-catalog.json"
 install -m 0600 "$render_dir/model-instructions.md" "$isolated_home/model-instructions.md"
 install -m 0600 "$render_dir/deployment.json" "$isolated_home/deployment.json"
+compatibility_cli resolve > "$render_dir/compatibility.json"
+"$python_cmd" - "$render_dir/compatibility.json" "$source_build" "$installed_codex_release" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+record = json.loads(path.read_text())
+package = pathlib.Path(sys.argv[3])
+record['installed_cli'] = {
+    'origin': 'source' if sys.argv[2] == 'true' else 'official-release',
+    'package': json.loads((package / 'codex-package.json').read_text()),
+}
+if sys.argv[2] == 'true':
+    record['installed_cli']['build'] = json.loads((package / 'codex-local-build.json').read_text())
+path.write_text(json.dumps(record, indent=2) + '\n')
+PY
+install -m 0600 "$render_dir/compatibility.json" "$isolated_home/compatibility.json"
+if [[ -n "$gui_mode" ]]; then
+    install -m 0600 "$render_dir/compatibility.json" "$render_dir/gui/compatibility.json"
+fi
 printf '%s\n' "$isolated_home" > "$runtime_root/codex-home"
 install -d -m 0755 "$bin_dir"
 install -m 0755 "$repo_root/scripts/codex-local" "$bin_dir/codex-local"

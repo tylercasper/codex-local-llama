@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "stage": "cli-source-baseline",
+  "codex": {
+    "path": "vendor/codex",
+    "repository": "https://github.com/openai/codex.git",
+    "revision": "be6e8eac029b183056b7e4402879f15d2c85f61b",
+    "version": "0.147.0",
+    "target": "x86_64-unknown-linux-gnu",
+    "profile": "release",
+    "rust_toolchain": "1.95.0"
+  },
+  "desktop": {
+    "linux": {
+      "manifest": "bundles/gui/linux.json",
+      "backend": "bundled",
+      "source_backend_validation": "pending",
+      "bundled_backend_version": "0.153.4"
+    },
+    "windows_wsl": {
+      "manifest": "bundles/gui/windows.json",
+      "backend": "bundled",
+      "source_backend_validation": "pending",
+      "bundled_backend_version": "0.153.4"
+    }
+  },
+  "reference_inference": {
+    "llama_cpp_revision": "adb55e5148dc93bcdca7212a2d1df3ccc422959a",
+    "model_id": "qwen3.8-27b",
+    "context_window": 262144,
+    "parallel_slots": 1,
+    "reasoning_format": "deepseek",
+    "chat_template_sha256": "12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce",
+    "model": {
+      "filename": "Qwen3.8-27B-UD-Q6_K_XL.gguf",
+      "bytes": 25924152384,
+      "sha256": "739202186fd9389bb58497c58b56c8a0d4253d99d20131e6a0427e363e678fc8"
+    },
+    "vision_projector": {
+      "filename": "mmproj-F16.gguf",
+      "bytes": 927607488,
+      "sha256": "cbb841a9ee0636b2ec172f5bb8df2ea8dfeb01e90fe7c6126581d662a0b4e43e"
+    }
+  }
+}

@@ -34,7 +34,7 @@ $utf8 = New-Object System.Text.UTF8Encoding $false
 $hadConfigHome = Test-Path $configHome
 $hadGuiData = Test-Path $guiData
 $savedFiles = @{}
-foreach ($path in @((Join-Path $configHome 'config.toml'), (Join-Path $configHome 'model-catalog.json'), (Join-Path $configHome 'model-instructions.md'), $shortcutPath)) {
+foreach ($path in @((Join-Path $configHome 'config.toml'), (Join-Path $configHome 'model-catalog.json'), (Join-Path $configHome 'model-instructions.md'), (Join-Path $configHome 'compatibility.json'), $shortcutPath)) {
     $savedFiles[$path] = if (Test-Path $path) { [IO.File]::ReadAllBytes($path) } else { $null }
 }
 $activated = $false
@@ -93,6 +93,8 @@ Start-Process -FilePath (Join-Path $PSScriptRoot 'ChatGPT.exe') -WorkingDirector
     $activated = $true
     New-Item -ItemType Directory -Path $configHome, $guiData -Force | Out-Null
     foreach ($name in @('model-catalog.json', 'model-instructions.md')) { Copy-Item (Join-Path $LocalConfigDirectory $name) $configHome -Force }
+    $compatibility = Join-Path $LocalConfigDirectory 'compatibility.json'
+    if (Test-Path $compatibility) { Copy-Item $compatibility $configHome -Force }
     $configPath = Join-Path $configHome 'config.toml'
     $config = [regex]::Replace($config, '(?m)^runCodexInWindowsSubsystemForLinux\s*=.*\r?\n?', '')
     $config = [regex]::Replace($config, '(?m)^integratedTerminalShell\s*=.*\r?\n?', '')
