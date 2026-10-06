@@ -246,7 +246,7 @@ fi
 
 [[ "$(uname -s)" == Linux ]] || fail "only Linux is supported"
 [[ "$(uname -m)" == x86_64 ]] || fail "this pinned package requires x86_64 Linux"
-for command_name in uv curl tar sha256sum systemctl sudo install cp mv ln find grep awk; do
+for command_name in git uv curl tar sha256sum systemctl sudo install cp mv ln find grep awk; do
     require_command "$command_name"
 done
 if $source_build; then
@@ -256,6 +256,7 @@ if $source_build; then
     fi
     compatibility_cli validate-package "$codex_source_package"
 fi
+compatibility_cli resolve > "$render_dir/compatibility.json"
 [[ -r "$ssh_config" ]] || fail "SSH config is not readable: $ssh_config"
 ssh -F "$ssh_config" -o BatchMode=yes "$ssh_target" true \
     || fail "non-interactive SSH preflight failed for $ssh_target"
@@ -349,7 +350,6 @@ install -m 0600 "$render_dir/local.config.toml" "$isolated_home/local.config.tom
 install -m 0600 "$render_dir/model-catalog.json" "$isolated_home/model-catalog.json"
 install -m 0600 "$render_dir/model-instructions.md" "$isolated_home/model-instructions.md"
 install -m 0600 "$render_dir/deployment.json" "$isolated_home/deployment.json"
-compatibility_cli resolve > "$render_dir/compatibility.json"
 "$python_cmd" - "$render_dir/compatibility.json" "$source_build" "$installed_codex_release" <<'PY'
 import json, pathlib, sys
 path = pathlib.Path(sys.argv[1])

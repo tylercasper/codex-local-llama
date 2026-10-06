@@ -1,6 +1,6 @@
 # Codex Local
 
-Install Codex with the model and connection configured in [`config/deployment.toml`](config/deployment.toml). Requires x86_64 Linux, Python 3.12+, `uv`, systemd, sudo, and working SSH access to the configured server. The checked-in `llama-server` SSH alias is a placeholder; configure it locally or pass `--config /path/to/deployment.toml`. Web search works without a key; optionally supply Tavily with `--tavily-key-file PATH`, with automatic keyless fallback.
+Install Codex with the model and connection configured in [`config/deployment.toml`](config/deployment.toml). Requires x86_64 Linux, Python 3.12+, Git, `uv`, systemd, sudo, and working SSH access to the configured server. The checked-in `llama-server` SSH alias is a placeholder; configure it locally or pass `--config /path/to/deployment.toml`. Web search works without a key; optionally supply Tavily with `--tavily-key-file PATH`, with automatic keyless fallback.
 
 Initialize the pinned backend source, then install:
 
