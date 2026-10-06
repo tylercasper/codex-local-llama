@@ -4,6 +4,7 @@ import argparse
 import copy
 import json
 import re
+import shutil
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -101,6 +102,8 @@ def render_install_assets(
     user: str,
     runtime_root: Path,
     ssh_path: Path,
+    codex_home: Path | None = None,
+    sqlite_home: Path | None = None,
 ) -> None:
     deployment = load_deployment(deployment_path, home=home)
     release = load_release(release_path)
@@ -110,11 +113,28 @@ def render_install_assets(
         _reject_newline(path.as_posix(), "path")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    isolated_home = home / ".codex-local"
+    isolated_home = codex_home if codex_home is not None else home / ".codex-local"
+    for path in (isolated_home, sqlite_home):
+        if path is not None:
+            _reject_newline(path.as_posix(), "state path")
+            if not path.is_absolute():
+                raise ValueError("Codex home and SQLite home must be absolute paths")
+    sqlite_setting = (
+        f"sqlite_home = {_toml_string(sqlite_home.as_posix())}\n"
+        if sqlite_home is not None else ""
+    )
     provider_runtime = runtime_root / "provider" / "current"
     model_catalog_path = isolated_home / "model-catalog.json"
+    model_instructions_path = isolated_home / "model-instructions.md"
     provider_base_url = (
         f"http://{deployment.local_host}:{deployment.provider_port}/v1"
+    )
+
+    model_instructions = (
+        repository_root / "prompts" / "opencode-default-codex.md"
+    ).read_text(encoding="utf-8")
+    (output_dir / "model-instructions.md").write_text(
+        model_instructions, encoding="utf-8"
     )
 
     profile_template = (
@@ -125,15 +145,21 @@ def render_install_assets(
         {
             "MODEL_ID": _toml_string(deployment.model_id),
             "MODEL_CATALOG_PATH": _toml_string(model_catalog_path.as_posix()),
+            "MODEL_INSTRUCTIONS_PATH": _toml_string(
+                model_instructions_path.as_posix()
+            ),
             "MODEL_CONTEXT_WINDOW": str(deployment.model_context_window),
             "PROVIDER_BASE_URL": _toml_string(provider_base_url),
         },
     )
+    profile = sqlite_setting + profile
     (output_dir / "local.config.toml").write_text(profile, encoding="utf-8")
     (output_dir / "config.toml").write_text(
-        'approval_policy = "on-request"\n'
+        sqlite_setting + 'approval_policy = "on-request"\n'
         'sandbox_mode = "workspace-write"\n'
-        'approvals_reviewer = "user"\n',
+        'approvals_reviewer = "auto_review"\n'
+        'hide_agent_reasoning = false\n'
+        'show_raw_agent_reasoning = true\n',
         encoding="utf-8",
     )
 
@@ -151,6 +177,7 @@ def render_install_assets(
             "context_window": deployment.model_context_window,
             "max_context_window": deployment.model_context_window,
             "auto_compact_token_limit": int(deployment.model_context_window * 0.9),
+            "base_instructions": model_instructions,
         }
     )
     models = [model]
@@ -160,7 +187,7 @@ def render_install_assets(
             context_window=deployment.model_context_window,
             max_context_window=deployment.model_context_window,
             auto_compact_token_limit=int(deployment.model_context_window * 0.9),
-            base_instructions=model["base_instructions"],
+            base_instructions=model_instructions,
         )
         models.append(extra)
     (output_dir / "model-catalog.json").write_text(
@@ -344,6 +371,26 @@ def _reject_newline(value: str, label: str) -> None:
         raise ValueError(f"{label} must not contain newlines")
 
 
+def render_gui_assets(assets_dir: Path, output_dir: Path) -> None:
+    """Reuse the deployment's managed model assets with a separate GUI home."""
+    profile = (assets_dir / "local.config.toml").read_text(encoding="utf-8")
+    for key, filename in (
+        ("model_catalog_json", "model-catalog.json"),
+        ("model_instructions_file", "model-instructions.md"),
+    ):
+        profile, count = re.subn(
+            rf"(?m)^{key}\s*=.*$", f'{key} = "{filename}"', profile
+        )
+        if count != 1:
+            raise ValueError(f"Expected one {key} in rendered deployment")
+    profile = 'sandbox_mode = "workspace-write"\n' + profile
+    tomllib.loads(profile)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "config.toml").write_text(profile, encoding="utf-8")
+    for filename in ("model-catalog.json", "model-instructions.md"):
+        shutil.copyfile(assets_dir / filename, output_dir / filename)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Render portable Codex assets for a self-hosted llama.cpp server"
@@ -359,10 +406,16 @@ def main() -> None:
     render.add_argument("--user", required=True)
     render.add_argument("--runtime-root", type=Path, required=True)
     render.add_argument("--ssh-path", type=Path, required=True)
+    render.add_argument("--codex-home", type=Path)
+    render.add_argument("--sqlite-home", type=Path)
 
     validate = subparsers.add_parser("validate-release")
     validate.add_argument("--release", type=Path, required=True)
     validate.add_argument("directory", type=Path)
+
+    gui = subparsers.add_parser("render-gui")
+    gui.add_argument("--assets-dir", type=Path, required=True)
+    gui.add_argument("--output-dir", type=Path, required=True)
 
     args = parser.parse_args()
     if args.command == "render":
@@ -375,7 +428,11 @@ def main() -> None:
             user=args.user,
             runtime_root=args.runtime_root.resolve(),
             ssh_path=args.ssh_path.resolve(),
+            codex_home=args.codex_home.resolve() if args.codex_home else None,
+            sqlite_home=args.sqlite_home.resolve() if args.sqlite_home else None,
         )
+    elif args.command == "render-gui":
+        render_gui_assets(args.assets_dir.resolve(), args.output_dir.resolve())
     else:
         validate_release_directory(args.directory.resolve(), load_release(args.release))
 

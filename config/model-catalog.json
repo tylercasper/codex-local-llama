@@ -36,7 +36,7 @@
       "default_reasoning_summary": "none",
       "support_verbosity": false,
       "default_verbosity": null,
-      "apply_patch_tool_type": null,
+      "apply_patch_tool_type": "freeform",
       "web_search_tool_type": "text",
       "truncation_policy": {
         "mode": "bytes",
@@ -50,11 +50,11 @@
       "effective_context_window_percent": 95,
       "experimental_supported_tools": [],
       "input_modalities": [
-        "text"
+        "text",
+        "image"
       ],
       "supports_search_tool": false,
       "use_responses_lite": false,
-      "base_instructions": "You are Codex, a coding agent running in the Codex CLI. Work collaboratively in the user's workspace. Follow all system, developer, AGENTS.md, and user instructions. Use the provided tools to inspect, change, and verify work; use apply_patch for file edits. Keep the user informed during longer work and persist until the task is genuinely complete. Be precise, safe, concise, and never claim results you did not verify.",
       "auto_review_model_override": "local"
     },
     {
@@ -81,7 +81,7 @@
       "default_reasoning_summary": "none",
       "support_verbosity": false,
       "default_verbosity": null,
-      "apply_patch_tool_type": null,
+      "apply_patch_tool_type": "freeform",
       "web_search_tool_type": "text",
       "truncation_policy": {
         "mode": "bytes",
@@ -95,11 +95,11 @@
       "effective_context_window_percent": 95,
       "experimental_supported_tools": [],
       "input_modalities": [
-        "text"
+        "text",
+        "image"
       ],
       "supports_search_tool": false,
-      "use_responses_lite": false,
-      "base_instructions": "You are Codex, a coding agent running in the Codex CLI. Work collaboratively in the user's workspace. Follow all system, developer, AGENTS.md, and user instructions. Use the provided tools to inspect, change, and verify work; use apply_patch for file edits. Keep the user informed during longer work and persist until the task is genuinely complete. Be precise, safe, concise, and never claim results you did not verify."
+      "use_responses_lite": false
     }
   ]
 }

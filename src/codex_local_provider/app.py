@@ -10,7 +10,9 @@ import aiohttp
 from aiohttp import web
 
 from .config import Settings
+from .keyless_search import KeylessSearchClient
 from .search import (
+    FallbackSearchClient,
     SearchProtocolError,
     TavilyClient,
     TavilyUpstreamError,
@@ -18,9 +20,13 @@ from .search import (
 )
 from .transforms import (
     SSETransformer,
+    expose_raw_reasoning_to_codex,
     flatten_web_namespace,
     normalize_instruction_messages,
+    normalize_view_image_outputs,
+    restore_apply_patch_custom_calls,
     restore_web_namespace_calls,
+    translate_apply_patch_request,
 )
 
 LOGGER = logging.getLogger("codex_local_provider")
@@ -28,6 +34,8 @@ LOGGER = logging.getLogger("codex_local_provider")
 SESSION_KEY: web.AppKey[aiohttp.ClientSession] = web.AppKey("session")
 SETTINGS_KEY: web.AppKey[Settings] = web.AppKey("settings")
 TAVILY_KEY: web.AppKey[Any] = web.AppKey("tavily")
+KEYLESS_KEY: web.AppKey[Any] = web.AppKey("keyless_search")
+SEARCH_KEY: web.AppKey[Any] = web.AppKey("search")
 
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -48,10 +56,12 @@ def create_app(
     settings: Settings | None = None,
     *,
     tavily_client: Any | None = None,
+    keyless_client: Any | None = None,
 ) -> web.Application:
     app = web.Application(client_max_size=32 * 1024 * 1024)
     app[SETTINGS_KEY] = settings or Settings.from_environment()
     app[TAVILY_KEY] = tavily_client
+    app[KEYLESS_KEY] = keyless_client
     app.on_startup.append(_startup)
     app.on_cleanup.append(_cleanup)
     app.router.add_get("/healthz", _health)
@@ -76,6 +86,11 @@ async def _startup(app: web.Application) -> None:
             api_key=settings.tavily_api_key,
             timeout_seconds=settings.request_timeout_seconds,
         )
+    if app[KEYLESS_KEY] is None:
+        app[KEYLESS_KEY] = KeylessSearchClient(
+            timeout_seconds=settings.request_timeout_seconds,
+        )
+    app[SEARCH_KEY] = FallbackSearchClient(app[TAVILY_KEY], app[KEYLESS_KEY])
 
 
 async def _cleanup(app: web.Application) -> None:
@@ -99,12 +114,15 @@ async def _health(request: web.Request) -> web.Response:
         pass
 
     tavily_configured = app[TAVILY_KEY] is not None
-    ready = upstream_ok and tavily_configured
+    search_available = app[SEARCH_KEY] is not None
+    ready = upstream_ok and search_available
     payload = {
         "status": "ok" if ready else "degraded",
         "upstream": upstream_ok,
         "upstream_status": upstream_status,
         "tavily_configured": tavily_configured,
+        "search_available": search_available,
+        "search_backend": "tavily+duckduckgo+bing" if tavily_configured else "duckduckgo+bing",
     }
     return web.json_response(payload, status=200 if ready else 503)
 
@@ -123,6 +141,8 @@ async def _proxy_responses(request: web.Request) -> web.StreamResponse:
         return _error_response(400, "Responses body must be a JSON object")
 
     payload, replacements = flatten_web_namespace(payload)
+    apply_patch_replacements = translate_apply_patch_request(payload)
+    view_image_replacements = normalize_view_image_outputs(payload)
     normalized_instructions = normalize_instruction_messages(payload)
     settings = request.app[SETTINGS_KEY]
     upstream_url = f"{settings.upstream_url}/v1/responses"
@@ -139,9 +159,12 @@ async def _proxy_responses(request: web.Request) -> web.StreamResponse:
         return _error_response(502, f"llama.cpp connection failed: {type(exc).__name__}")
 
     LOGGER.info(
-        "responses status=%s web_tools=%s instruction_messages=%s elapsed_ms=%d",
+        "responses status=%s web_tools=%s apply_patch_tools=%s "
+        "view_image_outputs=%s instruction_messages=%s elapsed_ms=%d",
         upstream.status,
         replacements,
+        apply_patch_replacements,
+        view_image_replacements,
         normalized_instructions,
         int((time.monotonic() - started) * 1000),
     )
@@ -153,12 +176,7 @@ async def _proxy_responses(request: web.Request) -> web.StreamResponse:
 
 async def _standalone_search(request: web.Request) -> web.Response:
     started = time.monotonic()
-    tavily = request.app[TAVILY_KEY]
-    if tavily is None:
-        return _error_response(
-            503,
-            "Tavily is not configured; install the API key and restart codex-local-provider",
-        )
+    search = request.app[SEARCH_KEY]
     try:
         payload = await request.json()
     except (json.JSONDecodeError, ValueError):
@@ -169,7 +187,7 @@ async def _standalone_search(request: web.Request) -> web.Response:
     try:
         result = await execute_search_request(
             payload,
-            tavily,
+            search,
             search_depth=request.app[SETTINGS_KEY].tavily_search_depth,
         )
     except SearchProtocolError as exc:
@@ -245,6 +263,8 @@ async def _buffered_upstream_response(
         try:
             payload = json.loads(body)
             restore_web_namespace_calls(payload)
+            restore_apply_patch_custom_calls(payload)
+            expose_raw_reasoning_to_codex(payload)
             body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
         except (json.JSONDecodeError, UnicodeDecodeError):
             pass

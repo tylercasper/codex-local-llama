@@ -8,7 +8,10 @@ Usage: install-local.sh [options]
 Install an isolated Codex harness for a self-hosted llama.cpp server.
 
 Options:
+  --gui                     Include the native Codex Local GUI
+  --wsl-gui                 Include the Windows GUI with WSL execution
   --config PATH             Deployment TOML (default: config/deployment.toml)
+  --codex-home PATH         Shared configuration and session directory
   --codex-release-dir PATH  Use an already-extracted pinned Codex package
   --tavily-key-file PATH    Install a Tavily API key from this file
   --dry-run                 Render and validate without changing the system
@@ -36,12 +39,25 @@ release_path="$repo_root/config/codex-release.json"
 codex_release_dir=""
 tavily_key_file=""
 dry_run=false
+gui_mode=""
+selected_codex_home="${CODEX_LOCAL_HOME:-}"
 
 while (($#)); do
     case "$1" in
+        --gui|--wsl-gui)
+            [[ -z "$gui_mode" || "$gui_mode" == "$1" ]] \
+                || fail "--gui and --wsl-gui are mutually exclusive"
+            gui_mode="$1"
+            shift
+            ;;
         --config)
             (($# >= 2)) || fail "--config requires a path"
             deployment_path="$2"
+            shift 2
+            ;;
+        --codex-home)
+            (($# >= 2)) || fail "--codex-home requires a path"
+            selected_codex_home="$2"
             shift 2
             ;;
         --codex-release-dir)
@@ -84,7 +100,28 @@ python_cmd="$(command -v python3)"
 home_dir="${HOME:?HOME must be set}"
 service_user="$(id -un)"
 runtime_root="${CODEX_LOCAL_RUNTIME_ROOT:-$home_dir/.local/lib/codex-local}"
-isolated_home="$home_dir/.codex-local"
+if [[ -z "$selected_codex_home" && -r "$runtime_root/codex-home" ]]; then
+    IFS= read -r selected_codex_home < "$runtime_root/codex-home"
+    if [[ "$gui_mode" == --wsl-gui && "$selected_codex_home" == "$home_dir/.codex-local" ]]; then
+        selected_codex_home=""
+    fi
+fi
+if [[ "$gui_mode" == --wsl-gui && -z "$selected_codex_home" ]]; then
+    powershell=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+    [[ -x "$powershell" ]] || fail "Windows PowerShell is required to locate the shared Windows home"
+    windows_profile="$("$powershell" -NoProfile -NonInteractive -Command '[Environment]::GetFolderPath("UserProfile")' | tr -d '\r')"
+    [[ -n "$windows_profile" ]] || fail "Could not locate the Windows user profile"
+    selected_codex_home="$(wslpath -u "$windows_profile")/.codex-local"
+fi
+isolated_home="${selected_codex_home:-$home_dir/.codex-local}"
+[[ "$isolated_home" == /* ]] || fail "--codex-home must be an absolute path"
+if [[ "$gui_mode" == --wsl-gui && ! "$isolated_home" =~ ^/mnt/[a-zA-Z]/ ]]; then
+    fail "--wsl-gui requires a Windows-backed --codex-home (for example /mnt/c/Users/you/.codex-local)"
+fi
+state_args=(--codex-home "$isolated_home")
+if [[ "$gui_mode" == --wsl-gui ]]; then
+    state_args+=(--sqlite-home "$home_dir/.local/state/codex-local/sqlite")
+fi
 bin_dir="$home_dir/.local/bin"
 ssh_path="$(command -v ssh || true)"
 [[ -n "$ssh_path" ]] || fail "required command not found: ssh"
@@ -108,7 +145,7 @@ deployment_cli render \
     --home "$home_dir" \
     --user "$service_user" \
     --runtime-root "$runtime_root" \
-    --ssh-path "$ssh_path"
+    --ssh-path "$ssh_path" "${state_args[@]}"
 
 if [[ -n "$codex_release_dir" ]]; then
     deployment_cli validate-release \
@@ -133,6 +170,23 @@ provider_port="${deployment_values[3]}"
 model_id="${deployment_values[4]}"
 codex_version="${deployment_values[5]}"
 codex_target="${deployment_values[6]}"
+
+if [[ -n "$gui_mode" ]]; then
+    deployment_cli render-gui --assets-dir "$render_dir" --output-dir "$render_dir/gui"
+    if [[ "$gui_mode" == --gui ]]; then
+        gui_helper="$repo_root/scripts/install-native-gui.sh"
+    else
+        gui_helper="$repo_root/scripts/install-wsl-gui.sh"
+    fi
+    gui_args=(--assets-dir "$render_dir/gui" --runtime-root "$runtime_root"
+              --gui-home "$home_dir/.codex-local-gui")
+    if [[ "$gui_mode" == --wsl-gui ]]; then
+        gui_args=(--assets-dir "$render_dir/gui" --runtime-root "$runtime_root"
+                  --gui-home "$isolated_home")
+    fi
+    # Validate bundled assets before changing either deployment.
+    bash "$gui_helper" "${gui_args[@]}" --dry-run
+fi
 
 if $dry_run; then
     echo "Dry run complete; no files or services were changed."
@@ -234,6 +288,7 @@ deployment_cli validate-release \
     --release "$release_path" "$installed_codex_release"
 "$installed_codex_release/bin/codex" --version | grep -F "$codex_version" >/dev/null \
     || fail "installed Codex binary did not report version $codex_version"
+"$python_cmd" "$repo_root/scripts/install_cli_apparmor.py" "$installed_codex_release/bin/codex"
 ln -sfn "releases/$codex_release_name" "$runtime_root/codex/current"
 
 install -d -m 0700 "$isolated_home"
@@ -242,7 +297,9 @@ if [[ ! -e "$isolated_home/config.toml" ]]; then
 fi
 install -m 0600 "$render_dir/local.config.toml" "$isolated_home/local.config.toml"
 install -m 0600 "$render_dir/model-catalog.json" "$isolated_home/model-catalog.json"
+install -m 0600 "$render_dir/model-instructions.md" "$isolated_home/model-instructions.md"
 install -m 0600 "$render_dir/deployment.json" "$isolated_home/deployment.json"
+printf '%s\n' "$isolated_home" > "$runtime_root/codex-home"
 install -d -m 0755 "$bin_dir"
 install -m 0755 "$repo_root/scripts/codex-local" "$bin_dir/codex-local"
 install -m 0755 "$repo_root/scripts/verify-local.sh" "$bin_dir/codex-local-verify"
@@ -263,4 +320,7 @@ sudo systemctl restart codex-local-tunnel.service
 sudo systemctl restart codex-local-provider.service
 
 "$bin_dir/codex-local-verify"
+if [[ -n "$gui_mode" ]]; then
+    bash "$gui_helper" "${gui_args[@]}"
+fi
 echo "Installed codex-local. Launch it with: $bin_dir/codex-local"

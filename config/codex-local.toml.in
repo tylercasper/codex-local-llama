@@ -2,10 +2,15 @@ model = @MODEL_ID@
 model_reasoning_effort = "none"
 model_provider = "llamacpp"
 model_catalog_json = @MODEL_CATALOG_PATH@
+model_instructions_file = @MODEL_INSTRUCTIONS_PATH@
 model_context_window = @MODEL_CONTEXT_WINDOW@
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
 web_search = "live"
 check_for_update_on_startup = false
 suppress_unstable_features_warning = true
+hide_agent_reasoning = false
+show_raw_agent_reasoning = true
 
 [sandbox_workspace_write]
 network_access = false

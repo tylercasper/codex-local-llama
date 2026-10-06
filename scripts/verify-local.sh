@@ -21,7 +21,12 @@ for command_name in python3 curl systemctl; do
         || fail "required command not found: $command_name"
 done
 
-isolated_home="${CODEX_LOCAL_HOME:-${HOME:?}/.codex-local}"
+runtime_root="${CODEX_LOCAL_RUNTIME_ROOT:-${HOME:?}/.local/lib/codex-local}"
+installed_home="${HOME}/.codex-local"
+if [[ -r "$runtime_root/codex-home" ]]; then
+    IFS= read -r installed_home < "$runtime_root/codex-home"
+fi
+isolated_home="${CODEX_LOCAL_HOME:-$installed_home}"
 deployment_path="$isolated_home/deployment.json"
 [[ -r "$deployment_path" ]] || fail "deployment manifest not found: $deployment_path"
 
@@ -77,7 +82,7 @@ allow_degraded = sys.argv[2] == "true"
 assert p.get("upstream") is True, "llama.cpp upstream is unavailable"
 if not allow_degraded:
     assert p.get("status") == "ok", "provider is degraded"
-    assert p.get("tavily_configured") is True, "Tavily is not configured"
+    assert p.get("search_available") is True, "Search is unavailable"
 ' "$health_file" "$allow_degraded" || fail "provider health payload is not ready"
 
 curl --fail --silent --show-error --max-time 5 "$base_url/v1/models" \

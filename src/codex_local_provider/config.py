@@ -55,6 +55,6 @@ def _load_tavily_key() -> str | None:
 def _read_nonempty(path: Path) -> str | None:
     try:
         value = path.read_text(encoding="utf-8").strip()
-    except (FileNotFoundError, PermissionError, OSError):
+    except (OSError, UnicodeError):
         return None
     return value or None

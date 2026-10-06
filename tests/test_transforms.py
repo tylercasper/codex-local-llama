@@ -4,9 +4,13 @@ import json
 
 from codex_local_provider.transforms import (
     SSETransformer,
+    expose_raw_reasoning_to_codex,
     flatten_web_namespace,
     normalize_instruction_messages,
+    normalize_view_image_outputs,
+    restore_apply_patch_custom_calls,
     restore_web_namespace_calls,
+    translate_apply_patch_request,
 )
 
 
@@ -53,6 +57,136 @@ def test_flattens_responses_lite_additional_tools() -> None:
     assert transformed["input"][0]["tools"][0]["name"] == "web_run"
 
 
+def test_translates_apply_patch_tool_and_history_for_llama_cpp() -> None:
+    payload = {
+        "tools": [
+            {
+                "type": "custom",
+                "name": "apply_patch",
+                "description": "Apply a patch.",
+                "format": {"type": "text"},
+            }
+        ],
+        "input": [
+            {
+                "type": "custom_tool_call",
+                "name": "apply_patch",
+                "call_id": "call_patch",
+                "input": "*** Begin Patch\n*** End Patch\n",
+            },
+            {
+                "type": "custom_tool_call_output",
+                "call_id": "call_patch",
+                "output": "Done!",
+            },
+        ],
+    }
+
+    assert translate_apply_patch_request(payload) == 1
+    tool = payload["tools"][0]
+    assert tool["type"] == "function"
+    assert tool["name"] == "apply_patch"
+    assert tool["parameters"]["required"] == ["patch"]
+    assert tool["strict"] is False
+    call, output = payload["input"]
+    assert call["type"] == "function_call"
+    assert json.loads(call["arguments"]) == {
+        "patch": "*** Begin Patch\n*** End Patch\n"
+    }
+    assert "input" not in call
+    assert output["type"] == "function_call_output"
+
+
+def test_apply_patch_translation_leaves_other_custom_tools_unchanged() -> None:
+    payload = {
+        "tools": [{"type": "custom", "name": "other"}],
+        "input": [
+            {
+                "type": "custom_tool_call",
+                "name": "other",
+                "call_id": "call_other",
+                "input": "text",
+            },
+            {
+                "type": "custom_tool_call_output",
+                "call_id": "call_other",
+                "output": "ok",
+            },
+        ],
+    }
+    original = json.loads(json.dumps(payload))
+
+    assert translate_apply_patch_request(payload) == 0
+    assert payload == original
+
+
+def test_moves_view_image_output_to_user_message_for_llama_cpp() -> None:
+    image = {
+        "type": "input_image",
+        "image_url": "data:image/png;base64,cGl4ZWxz",
+        "detail": "high",
+    }
+    payload = {
+        "input": [
+            {
+                "type": "function_call",
+                "name": "view_image",
+                "call_id": "call_image",
+                "arguments": json.dumps({"path": "/tmp/screenshot.png"}),
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_image",
+                "output": [image],
+            },
+        ]
+    }
+
+    assert normalize_view_image_outputs(payload) == 1
+    call, output, message = payload["input"]
+    assert call["name"] == "view_image"
+    assert output == {
+        "type": "function_call_output",
+        "call_id": "call_image",
+        "output": "Image loaded successfully.",
+    }
+    assert message == {
+        "type": "message",
+        "role": "user",
+        "content": [
+            {
+                "type": "input_text",
+                "text": "Image returned by view_image for /tmp/screenshot.png.",
+            },
+            image,
+        ],
+    }
+
+
+def test_view_image_normalization_ignores_other_image_outputs() -> None:
+    payload = {
+        "input": [
+            {
+                "type": "function_call",
+                "name": "other_tool",
+                "call_id": "call_other",
+                "arguments": "{}",
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_other",
+                "output": [
+                    {"type": "input_image", "image_url": "data:image/png;base64,eA=="}
+                ],
+            },
+        ]
+    }
+    original = json.loads(json.dumps(payload))
+
+    assert normalize_view_image_outputs(payload) == 0
+    assert payload == original
+
+
 def test_restores_function_call_namespace_recursively() -> None:
     event = {
         "type": "response.output_item.added",
@@ -68,6 +202,39 @@ def test_restores_function_call_namespace_recursively() -> None:
 
     assert event["item"]["name"] == "run"
     assert event["item"]["namespace"] == "web"
+
+
+def test_restores_apply_patch_function_call_as_custom_call() -> None:
+    patch = "*** Begin Patch\n*** Add File: ok.txt\n+ok\n*** End Patch\n"
+    event = {
+        "type": "response.output_item.done",
+        "item": {
+            "type": "function_call",
+            "name": "apply_patch",
+            "call_id": "call_patch",
+            "arguments": json.dumps({"patch": patch}),
+        },
+    }
+
+    restore_apply_patch_custom_calls(event)
+
+    assert event["item"] == {
+        "type": "custom_tool_call",
+        "name": "apply_patch",
+        "call_id": "call_patch",
+        "input": patch,
+    }
+
+
+def test_restores_raw_apply_patch_arguments_without_data_loss() -> None:
+    call = {
+        "type": "function_call",
+        "name": "apply_patch",
+        "arguments": "*** Begin Patch\n*** End Patch\n",
+    }
+    restore_apply_patch_custom_calls(call)
+    assert call["type"] == "custom_tool_call"
+    assert call["input"] == "*** Begin Patch\n*** End Patch\n"
 
 
 def test_sse_transformer_handles_fragmented_lines() -> None:
@@ -87,10 +254,85 @@ def test_sse_transformer_handles_fragmented_lines() -> None:
     assert output.startswith(b"event: response.output_item.done\n")
 
 
+def test_sse_transformer_restores_apply_patch_custom_call() -> None:
+    patch = "*** Begin Patch\n*** Add File: ok.txt\n+ok\n*** End Patch\n"
+    event = {
+        "type": "response.output_item.done",
+        "item": {
+            "type": "function_call",
+            "name": "apply_patch",
+            "call_id": "call_patch",
+            "arguments": json.dumps({"patch": patch}),
+        },
+    }
+    transformer = SSETransformer()
+
+    output = transformer.feed(f"data: {json.dumps(event)}\n\n".encode())
+
+    data = json.loads(output.splitlines()[0].removeprefix(b"data: "))
+    assert data["item"]["type"] == "custom_tool_call"
+    assert data["item"]["input"] == patch
+
+
 def test_sse_transformer_preserves_non_json_and_done() -> None:
     transformer = SSETransformer()
     wire = b": keepalive\ndata: [DONE]\n\n"
     assert transformer.feed(wire) + transformer.finish() == wire
+
+
+def test_exposes_completed_raw_reasoning_without_losing_history_content() -> None:
+    response = {
+        "type": "response.completed",
+        "response": {
+            "output": [
+                {
+                    "id": "rs_1",
+                    "type": "reasoning",
+                    "summary": [],
+                    "content": [
+                        {"type": "reasoning_text", "text": "inspect, then patch"}
+                    ],
+                }
+            ]
+        },
+    }
+
+    expose_raw_reasoning_to_codex(response)
+
+    item = response["response"]["output"][0]
+    assert item["content"] == [
+        {"type": "reasoning_text", "text": "inspect, then patch"}
+    ]
+    assert item["summary"] == [
+        {"type": "summary_text", "text": "inspect, then patch"}
+    ]
+
+
+def test_sse_transformer_relabels_raw_reasoning_as_visible_reasoning() -> None:
+    event = {
+        "type": "response.reasoning_text.delta",
+        "item_id": "rs_1",
+        "content_index": 0,
+        "delta": "inspect",
+    }
+    wire = (
+        "event: response.reasoning_text.delta\n"
+        f"data: {json.dumps(event)}\n\n"
+    ).encode()
+    transformer = SSETransformer()
+
+    output = transformer.feed(wire) + transformer.finish()
+
+    lines = output.splitlines()
+    assert lines[0] == b"event: response.reasoning_summary_text.delta"
+    data = json.loads(lines[1].removeprefix(b"data: "))
+    assert data == {
+        "type": "response.reasoning_summary_text.delta",
+        "item_id": "rs_1",
+        "delta": "inspect",
+        "summary_index": 0,
+        "output_index": 0,
+    }
 
 
 def _message(role: str, text: str) -> dict:

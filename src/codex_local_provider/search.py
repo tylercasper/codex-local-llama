@@ -30,6 +30,83 @@ class TavilyProtocol(Protocol):
     async def extract(self, payload: dict[str, Any]) -> dict[str, Any]: ...
 
 
+class FallbackSearchClient:
+    """Prefer authenticated search when available, retry operational failures keylessly."""
+
+    def __init__(self, primary: TavilyProtocol | None, fallback: TavilyProtocol) -> None:
+        self.primary = primary
+        self.fallback = fallback
+
+    async def search(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.primary is not None:
+            try:
+                return _validate_search_response(await self.primary.search(payload))
+            except (TavilyUpstreamError, aiohttp.ClientError, TimeoutError):
+                pass
+        try:
+            return _validate_search_response(await self.fallback.search(payload))
+        except (TavilyUpstreamError, aiohttp.ClientError, TimeoutError):
+            # Never expose an upstream response/exception that might contain credentials.
+            raise TavilyUpstreamError(502, "Web search providers are unavailable") from None
+
+    async def extract(self, payload: dict[str, Any]) -> dict[str, Any]:
+        urls = payload.get("urls", [])
+        if not isinstance(urls, list) or not urls or not all(isinstance(url, str) for url in urls):
+            raise SearchProtocolError(400, "Extraction requires a non-empty URLs list")
+        results: dict[str, dict[str, Any]] = {}
+        if self.primary is not None:
+            try:
+                results.update(_valid_extractions(await self.primary.extract(payload), urls))
+            except (TavilyUpstreamError, aiohttp.ClientError, TimeoutError):
+                pass
+        missing = [url for url in urls if url not in results]
+        if missing:
+            try:
+                response = await self.fallback.extract({**payload, "urls": missing})
+                results.update(_valid_extractions(response, missing))
+            except (TavilyUpstreamError, aiohttp.ClientError, TimeoutError):
+                pass
+        if not results:
+            raise TavilyUpstreamError(502, "Web providers could not extract the requested URLs")
+        return {
+            "results": [results[url] for url in urls if url in results],
+            "failed_results": [{"url": url, "error": "No extractable content"}
+                               for url in urls if url not in results],
+        }
+
+
+def _validate_search_response(response: Any) -> dict[str, Any]:
+    if not isinstance(response, dict) or not isinstance(response.get("results"), list):
+        raise TavilyUpstreamError(502, "Search provider returned an invalid results list")
+    # An explicitly empty list is a legitimate zero-result search, not an outage.
+    for result in response["results"]:
+        if not isinstance(result, dict) or not isinstance(result.get("url"), str):
+            raise TavilyUpstreamError(502, "Search provider returned an invalid result")
+        try:
+            parsed = urlparse(result["url"])
+        except ValueError:
+            raise TavilyUpstreamError(502, "Search provider returned an invalid result URL") from None
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise TavilyUpstreamError(502, "Search provider returned an invalid result URL")
+        for field in ("title", "content", "published_date"):
+            if result.get(field) is not None and not isinstance(result[field], str):
+                raise TavilyUpstreamError(502, "Search provider returned an invalid result field")
+    return response
+
+
+def _valid_extractions(response: Any, urls: list[str]) -> dict[str, dict[str, Any]]:
+    if not isinstance(response, dict) or not isinstance(response.get("results"), list):
+        raise TavilyUpstreamError(502, "Extraction provider returned an invalid results list")
+    results = {}
+    for result in response["results"]:
+        if not isinstance(result, dict):
+            continue
+        url, content = result.get("url"), result.get("raw_content")
+        if isinstance(url, str) and url in urls and isinstance(content, str) and content.strip():
+            results[url] = result
+    return results
+
+
 class TavilyClient:
     def __init__(
         self,
@@ -51,6 +128,8 @@ class TavilyClient:
         return await self._post("/extract", payload)
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self._api_key.strip() or any(ord(char) < 32 or ord(char) == 127 for char in self._api_key):
+            raise TavilyUpstreamError(401, "Tavily API key is invalid")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -152,6 +231,9 @@ async def _run_search(
         raise TavilyUpstreamError(502, "Tavily search response omitted its results list")
 
     lines = [f"## Search: {query}"]
+    notice = response.get("notice")
+    if isinstance(notice, str) and notice.strip():
+        lines.append(_clean_text(notice))
     if not results:
         lines.append("No results.")
         return "\n".join(lines)
@@ -199,11 +281,7 @@ async def _extract_url(url: str, tavily: TavilyProtocol) -> str:
     )
     results = response.get("results", [])
     if not isinstance(results, list) or not results:
-        failed = response.get("failed_results", [])
-        detail = ""
-        if isinstance(failed, list) and failed:
-            detail = f" ({_clean_text(str(failed[0]))})"
-        raise TavilyUpstreamError(502, f"Tavily could not extract the URL{detail}")
+        raise TavilyUpstreamError(502, "Web provider could not extract the URL")
     first = results[0]
     if not isinstance(first, Mapping):
         raise TavilyUpstreamError(502, "Tavily returned an invalid extraction result")
@@ -291,10 +369,6 @@ async def _read_json(response: aiohttp.ClientResponse) -> Any:
 
 
 def _sanitized_tavily_error(payload: Any, status: int) -> str:
-    if isinstance(payload, Mapping):
-        for key in ("detail", "error", "message"):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return f"Tavily returned HTTP {status}: {_clean_text(value)[:500]}"
+    # Upstream detail/error/message fields may echo an invalid API key or request.
+    # Status is sufficient for diagnostics without returning credential-bearing text.
     return f"Tavily returned HTTP {status}"
-

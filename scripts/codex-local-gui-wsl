@@ -1,0 +1,84 @@
+#!/usr/bin/python3
+"""Adapt Windows filesystem paths sent by the GUI to its WSL app-server.
+
+Install beside the private GUI's resources/codex, and select with CODEX_CLI_PATH.
+The GUI's default-project creation currently sends Windows paths to Linux RPCs.
+"""
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import threading
+
+
+def linux_path(value):
+    if not isinstance(value, str):
+        return value
+    drive = re.fullmatch(r'([A-Za-z]):[\\/](.*)', value, re.DOTALL)
+    if drive:
+        return f'/mnt/{drive[1].lower()}/' + drive[2].replace('\\', '/')
+    unc = re.fullmatch(r'\\\\(?:wsl\$|wsl\.localhost)\\([^\\]+)(?:\\(.*))?', value,
+                       re.IGNORECASE | re.DOTALL)
+    if unc and unc[1].casefold() == os.environ.get('WSL_DISTRO_NAME', '').casefold():
+        return '/' + (unc[2] or '').replace('\\', '/')
+    return value
+
+
+def translate(message):
+    params = message.get('params')
+    method = message.get('method', '')
+    if not isinstance(params, dict):
+        return message
+    fields = ('path', 'sourcePath', 'destinationPath') if method.startswith('fs/') else ()
+    if method == 'process/spawn':
+        fields = ('cwd',)
+    for field in fields:
+        if field in params:
+            params[field] = linux_path(params[field])
+    if method in ('project/create', 'project/update', 'project/import'):
+        roots = params.get('roots')
+        if isinstance(roots, list):
+            for root in roots:
+                if isinstance(root, dict) and 'path' in root:
+                    root['path'] = linux_path(root['path'])
+    return message
+
+
+def main():
+    # The GUI supplies its default WSL sqlite directory independently of CODEX_HOME.
+    # Override it here so this private deployment cannot share official history.
+    if os.environ.get('CODEX_HOME'):
+        os.environ['CODEX_SQLITE_HOME'] = str(Path(os.environ['CODEX_HOME']) / 'sqlite')
+    backend = str(Path(__file__).resolve().with_name('codex'))
+    args = [backend, *sys.argv[1:]]
+    if 'app-server' not in sys.argv[1:]:
+        os.execv(backend, args)
+    child = subprocess.Popen(args, stdin=subprocess.PIPE)
+
+    def feed():
+        try:
+            for line in sys.stdin.buffer:
+                try:
+                    message = json.loads(line)
+                    if isinstance(message, dict):
+                        line = json.dumps(translate(message), ensure_ascii=False).encode() + b'\n'
+                except (ValueError, UnicodeError):
+                    pass
+                child.stdin.write(line)
+                child.stdin.flush()
+        except BrokenPipeError:
+            pass
+        finally:
+            try:
+                child.stdin.close()
+            except BrokenPipeError:
+                pass
+
+    threading.Thread(target=feed, daemon=True).start()
+    raise SystemExit(child.wait())
+
+
+if __name__ == '__main__':
+    main()

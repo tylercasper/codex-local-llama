@@ -38,20 +38,41 @@ def test_render_install_assets(tmp_path: Path) -> None:
     assert profile["model"] == "qwen3.8-27b"
     assert profile["model_provider"] == "llamacpp"
     assert profile["model_catalog_json"] == str(home / ".codex-local/model-catalog.json")
+    assert profile["model_instructions_file"] == str(
+        home / ".codex-local/model-instructions.md"
+    )
+    assert profile["hide_agent_reasoning"] is False
+    assert profile["show_raw_agent_reasoning"] is True
+    assert profile["approval_policy"] == "on-request"
+    assert profile["approvals_reviewer"] == "auto_review"
     assert profile["model_providers"]["llamacpp"]["base_url"] == (
         "http://127.0.0.1:18000/v1"
     )
 
-    catalog = json.loads((output_dir / "model-catalog.json").read_text())
+    with (output_dir / "config.toml").open("rb") as handle:
+        base_config = tomllib.load(handle)
+    assert base_config["hide_agent_reasoning"] is False
+    assert base_config["show_raw_agent_reasoning"] is True
+    assert base_config["approval_policy"] == "on-request"
+    assert base_config["approvals_reviewer"] == "auto_review"
+
+    prompt = (REPOSITORY_ROOT / "prompts/opencode-default-codex.md").read_text(
+        encoding="utf-8"
+    )
+    assert (output_dir / "model-instructions.md").read_text(encoding="utf-8") == prompt
+    catalog = json.loads(
+        (output_dir / "model-catalog.json").read_text(encoding="utf-8")
+    )
+    assert catalog["models"][0]["base_instructions"] == prompt
+    assert catalog["models"][0]["apply_patch_tool_type"] == "freeform"
     reviewer = next(
         entry for entry in catalog["models"]
         if entry["slug"] == catalog["models"][0]["auto_review_model_override"]
     )
     assert reviewer["visibility"] == "hide"
     assert reviewer["default_reasoning_level"] == "none"
-    assert reviewer["base_instructions"] == catalog["models"][0]["base_instructions"]
+    assert reviewer["base_instructions"] == prompt
     assert reviewer["context_window"] == catalog["models"][0]["context_window"]
-    assert profile["model_reasoning_effort"] == "none"
 
     deployment = json.loads(
         (output_dir / "deployment.json").read_text(encoding="utf-8")
@@ -73,7 +94,11 @@ def test_render_install_assets(tmp_path: Path) -> None:
     tunnel_unit = (output_dir / "codex-local-tunnel.service").read_text(
         encoding="utf-8"
     )
-    assert '-L "127.0.0.1:18001:127.0.0.1:8001"' in tunnel_unit
+    configured = load_deployment(REPOSITORY_ROOT / "config/deployment.toml", home=home)
+    assert (
+        f'-L "{configured.local_host}:{configured.tunnel_port}:'
+        f'{configured.remote_host}:{configured.remote_port}"'
+    ) in tunnel_unit
     assert f'-F "{home}/.ssh/config"' in tunnel_unit
     assert "@" not in provider_unit
     assert "@" not in tunnel_unit

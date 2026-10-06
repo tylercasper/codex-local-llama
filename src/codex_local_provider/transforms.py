@@ -8,8 +8,15 @@ from typing import Any
 WEB_NAMESPACE = "web"
 WEB_TOOL_NAME = "run"
 FLAT_WEB_TOOL_NAME = "web_run"
+APPLY_PATCH_TOOL_NAME = "apply_patch"
+APPLY_PATCH_ARGUMENT_NAME = "patch"
+VIEW_IMAGE_TOOL_NAME = "view_image"
+RAW_REASONING_DELTA_TYPE = "response.reasoning_text.delta"
+RAW_REASONING_DONE_TYPE = "response.reasoning_text.done"
+VISIBLE_REASONING_DELTA_TYPE = "response.reasoning_summary_text.delta"
+VISIBLE_REASONING_DONE_TYPE = "response.reasoning_summary_text.done"
 
-WEB_TOOL_DESCRIPTION = """Search and read the public web through Tavily.
+WEB_TOOL_DESCRIPTION = """Search and read the public web.
 
 Supported operations:
 - search_query: search one or more queries and receive titles, full URLs, and snippets.
@@ -80,6 +87,18 @@ WEB_TOOL_PARAMETERS: dict[str, Any] = {
 }
 
 INSTRUCTION_ROLES = {"system", "developer"}
+
+APPLY_PATCH_PARAMETERS: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        APPLY_PATCH_ARGUMENT_NAME: {
+            "type": "string",
+            "description": "The complete *** Begin Patch ... *** End Patch patch text.",
+        }
+    },
+    "required": [APPLY_PATCH_ARGUMENT_NAME],
+    "additionalProperties": False,
+}
 
 
 def normalize_instruction_messages(payload: dict[str, Any]) -> int:
@@ -156,6 +175,168 @@ def flatten_web_namespace(payload: dict[str, Any]) -> tuple[dict[str, Any], int]
     return transformed, replacements
 
 
+def translate_apply_patch_request(payload: dict[str, Any]) -> int:
+    """Translate Codex's custom apply_patch protocol for llama.cpp.
+
+    Codex 0.147 exposes apply_patch as a Responses custom tool. llama.cpp's
+    Responses compatibility layer drops non-function tools, so present it to
+    the model as a normal function and translate prior call history back to
+    the function-call input shapes llama.cpp accepts. The payload is mutated
+    in place and the number of translated tool declarations is returned.
+    """
+
+    replacements = 0
+    for tools in _tool_lists(payload):
+        for index, tool in enumerate(tools):
+            replacement = _function_apply_patch_tool(tool)
+            if replacement is None:
+                continue
+            tools[index] = replacement
+            replacements += 1
+
+    input_items = payload.get("input")
+    if not isinstance(input_items, list):
+        return replacements
+
+    apply_patch_call_ids = {
+        item.get("call_id")
+        for item in input_items
+        if isinstance(item, dict)
+        and item.get("type") == "custom_tool_call"
+        and item.get("name") == APPLY_PATCH_TOOL_NAME
+        and isinstance(item.get("call_id"), str)
+    }
+    for item in input_items:
+        if not isinstance(item, dict):
+            continue
+        if (
+            item.get("type") == "custom_tool_call"
+            and item.get("name") == APPLY_PATCH_TOOL_NAME
+        ):
+            patch = item.pop("input", "")
+            item["type"] = "function_call"
+            item["arguments"] = json.dumps(
+                {APPLY_PATCH_ARGUMENT_NAME: patch},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        elif (
+            item.get("type") == "custom_tool_call_output"
+            and item.get("call_id") in apply_patch_call_ids
+        ):
+            item["type"] = "function_call_output"
+    return replacements
+
+
+def normalize_view_image_outputs(payload: dict[str, Any]) -> int:
+    """Move Codex view-image results into Qwen-compatible user messages.
+
+    Codex records ``view_image`` results as image content inside a
+    ``function_call_output``. llama.cpp's Responses parser requires function
+    outputs to contain input text, even though it accepts the same image
+    content in an ordinary user message. Keep the tool result in the history
+    as text and insert its image immediately afterward without changing the
+    encoded image data or requested detail level.
+    """
+
+    input_items = payload.get("input")
+    if not isinstance(input_items, list):
+        return 0
+
+    view_image_calls: dict[str, str | None] = {}
+    for item in input_items:
+        if (
+            isinstance(item, dict)
+            and item.get("type") == "function_call"
+            and item.get("name") == VIEW_IMAGE_TOOL_NAME
+            and isinstance(item.get("call_id"), str)
+        ):
+            view_image_calls[item["call_id"]] = _view_image_path(item.get("arguments"))
+
+    if not view_image_calls:
+        return 0
+
+    rewritten: list[Any] = []
+    replacements = 0
+    for item in input_items:
+        rewritten.append(item)
+        if not isinstance(item, dict) or item.get("type") != "function_call_output":
+            continue
+        call_id = item.get("call_id")
+        if call_id not in view_image_calls:
+            continue
+
+        output = item.get("output")
+        if not isinstance(output, list):
+            continue
+        images = [
+            copy.deepcopy(part)
+            for part in output
+            if isinstance(part, dict) and part.get("type") == "input_image"
+        ]
+        if not images:
+            continue
+
+        text_parts = [
+            part.get("text")
+            for part in output
+            if isinstance(part, dict)
+            and part.get("type") == "input_text"
+            and isinstance(part.get("text"), str)
+        ]
+        item["output"] = "\n".join(text_parts) or "Image loaded successfully."
+
+        path = view_image_calls[call_id]
+        annotation = "Image returned by the view_image tool."
+        if path:
+            annotation = f"Image returned by view_image for {path}."
+        rewritten.append(
+            {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": annotation},
+                    *images,
+                ],
+            }
+        )
+        replacements += 1
+
+    if replacements:
+        input_items[:] = rewritten
+    return replacements
+
+
+def _view_image_path(arguments: Any) -> str | None:
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(arguments, dict):
+        return None
+    path = arguments.get("path")
+    return path if isinstance(path, str) else None
+
+
+def _function_apply_patch_tool(tool: Any) -> dict[str, Any] | None:
+    if not isinstance(tool, dict):
+        return None
+    if tool.get("type") != "custom" or tool.get("name") != APPLY_PATCH_TOOL_NAME:
+        return None
+
+    return {
+        "type": "function",
+        "name": APPLY_PATCH_TOOL_NAME,
+        "description": tool.get(
+            "description",
+            "Apply a file patch using the Codex apply_patch format.",
+        ),
+        "parameters": copy.deepcopy(APPLY_PATCH_PARAMETERS),
+        "strict": False,
+    }
+
+
 def _tool_lists(payload: dict[str, Any]) -> Iterator[list[Any]]:
     tools = payload.get("tools")
     if isinstance(tools, list):
@@ -215,6 +396,98 @@ def restore_web_namespace_calls(value: Any) -> Any:
     return value
 
 
+def restore_apply_patch_custom_calls(value: Any) -> Any:
+    """Restore function-form apply_patch calls to Codex's custom-tool shape."""
+
+    if isinstance(value, list):
+        for item in value:
+            restore_apply_patch_custom_calls(item)
+        return value
+    if not isinstance(value, dict):
+        return value
+
+    if value.get("type") == "function_call" and value.get("name") == APPLY_PATCH_TOOL_NAME:
+        arguments = value.pop("arguments", "")
+        value["type"] = "custom_tool_call"
+        value["input"] = _patch_from_function_arguments(arguments)
+
+    for child in value.values():
+        restore_apply_patch_custom_calls(child)
+    return value
+
+
+def expose_raw_reasoning_to_codex(value: Any) -> Any:
+    """Carry llama.cpp raw reasoning through Codex 0.147's visible channel.
+
+    llama.cpp emits the Responses API's ``reasoning_text`` events for parsed
+    thinking. Codex 0.147 consumes ``reasoning_summary_text`` events instead.
+    The adapter relabels the stream without changing its text and mirrors a
+    completed reasoning item's raw content into its summary while retaining
+    the original content for llama.cpp conversation history.
+    """
+
+    if isinstance(value, list):
+        for item in value:
+            expose_raw_reasoning_to_codex(item)
+        return value
+    if not isinstance(value, dict):
+        return value
+
+    event_type = value.get("type")
+    if event_type == RAW_REASONING_DELTA_TYPE:
+        value["type"] = VISIBLE_REASONING_DELTA_TYPE
+        value["summary_index"] = value.pop("content_index", 0)
+        value.setdefault("output_index", 0)
+    elif event_type == RAW_REASONING_DONE_TYPE:
+        value["type"] = VISIBLE_REASONING_DONE_TYPE
+        value["summary_index"] = value.pop("content_index", 0)
+        value.setdefault("output_index", 0)
+    elif event_type == "reasoning":
+        _mirror_reasoning_content_to_summary(value)
+
+    for child in value.values():
+        expose_raw_reasoning_to_codex(child)
+    return value
+
+
+def _mirror_reasoning_content_to_summary(item: dict[str, Any]) -> None:
+    content = item.get("content")
+    if not isinstance(content, list) or not content:
+        return
+    summary = item.get("summary")
+    if isinstance(summary, list) and summary:
+        return
+
+    mirrored = []
+    for part in content:
+        if not isinstance(part, dict) or part.get("type") != "reasoning_text":
+            continue
+        text = part.get("text")
+        if isinstance(text, str):
+            mirrored.append({"type": "summary_text", "text": text})
+    if mirrored:
+        item["summary"] = mirrored
+
+
+def _patch_from_function_arguments(arguments: Any) -> str:
+    if isinstance(arguments, dict):
+        parsed = arguments
+    elif isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+        except json.JSONDecodeError:
+            return arguments
+    else:
+        return str(arguments)
+
+    if isinstance(parsed, dict):
+        for key in (APPLY_PATCH_ARGUMENT_NAME, "input", "command"):
+            value = parsed.get(key)
+            if isinstance(value, str):
+                return value
+    return arguments if isinstance(arguments, str) else json.dumps(parsed)
+
+
 class SSETransformer:
     """Incrementally rewrite JSON data lines while preserving SSE framing."""
 
@@ -252,6 +525,17 @@ def _transform_sse_line(line: bytes) -> bytes:
         carriage_return = b"\r"
         body = body[:-1]
 
+    if body.startswith(b"event:"):
+        event_name = body.removeprefix(b"event:").strip()
+        replacements = {
+            RAW_REASONING_DELTA_TYPE.encode(): VISIBLE_REASONING_DELTA_TYPE.encode(),
+            RAW_REASONING_DONE_TYPE.encode(): VISIBLE_REASONING_DONE_TYPE.encode(),
+        }
+        replacement = replacements.get(event_name)
+        if replacement is not None:
+            return b"event: " + replacement + carriage_return + newline
+        return line
+
     if not body.startswith(b"data:"):
         return line
 
@@ -266,5 +550,7 @@ def _transform_sse_line(line: bytes) -> bytes:
         return line
 
     restore_web_namespace_calls(event)
+    restore_apply_patch_custom_calls(event)
+    expose_raw_reasoning_to_codex(event)
     serialized = json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode()
     return prefix + b" " + serialized + carriage_return + newline

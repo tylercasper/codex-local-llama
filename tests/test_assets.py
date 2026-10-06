@@ -27,13 +27,44 @@ def test_model_catalog_matches_deployment_defaults() -> None:
     assert model["max_context_window"] == 262_144
     assert model["supports_parallel_tool_calls"] is False
     assert model["use_responses_lite"] is False
+    assert model["apply_patch_tool_type"] == "freeform"
+    assert model["input_modalities"] == ["text", "image"]
+    assert "base_instructions" not in model
 
     config = (REPOSITORY_ROOT / "config/codex-local.toml.in").read_text(
         encoding="utf-8"
     )
     assert "model = @MODEL_ID@" in config
     assert "model_catalog_json = @MODEL_CATALOG_PATH@" in config
+    assert "model_instructions_file = @MODEL_INSTRUCTIONS_PATH@" in config
+    assert "hide_agent_reasoning = false" in config
+    assert "show_raw_agent_reasoning = true" in config
+    assert 'approval_policy = "on-request"' in config
+    assert 'approvals_reviewer = "auto_review"' in config
     assert 'supports_standalone_web_search = true' in config
+
+
+def test_prompt_assets_preserve_upstream_and_previous_versions() -> None:
+    prompts = REPOSITORY_ROOT / "prompts"
+    previous = (prompts / "codex-local-previous.md").read_text(encoding="utf-8")
+    upstream = (prompts / "opencode-default-upstream.md").read_text(
+        encoding="utf-8"
+    )
+    active = (prompts / "opencode-default-codex.md").read_text(encoding="utf-8")
+
+    assert previous.startswith("You are Codex, a coding agent running in the Codex CLI.")
+    assert upstream.startswith("You are opencode, an interactive CLI tool")
+    assert "prefer to use the Task tool" in upstream
+    assert "Use `apply_patch` for every file creation" in active
+    assert "Never edit files through `exec_command`" in active
+    assert "Call `update_plan` immediately as the first assistant output" in active
+    assert "Produce no reasoning or commentary before it" in active
+    assert "Make inspection the first step when needed" in active
+    assert "Tool calls are the work. Reasoning is only for choosing" in active
+    assert "the correct reasoning output is empty" in active
+    assert "the very next assistant item is `apply_patch`" in active
+    assert "Do not insert a reasoning item between a tool result" in active
+    assert "at most one sentence and 25 words of reasoning" not in active
 
 
 def test_portable_assets_do_not_embed_install_user() -> None:
@@ -47,7 +78,7 @@ def test_portable_assets_do_not_embed_install_user() -> None:
         REPOSITORY_ROOT / "systemd/codex-local-tunnel.service.in",
     ]
     for path in paths:
-        assert "/home/example" not in path.read_text(encoding="utf-8"), path
+        assert str(Path.home()) not in path.read_text(encoding="utf-8"), path
 
 
 def test_pinned_codex_release_has_expected_identity() -> None:

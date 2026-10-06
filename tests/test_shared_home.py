@@ -1,9 +1,11 @@
-"""Local model configuration must survive CLI launch."""
+"""Shared-home configuration must survive installation and CLI launch."""
 import os
 import json
 from pathlib import Path
 import subprocess
 import tomllib
+
+from codex_local_provider.deployment import render_gui_assets, render_install_assets
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -76,3 +78,33 @@ def test_cli_missing_local_configuration_fails_before_starting_codex(tmp_path):
     )
     assert result.returncode != 0
     assert 'cannot resolve local model configuration' in result.stderr
+
+
+def test_cli_and_gui_render_same_shared_database_and_model_files(tmp_path):
+    assets = tmp_path / 'assets'
+    shared = tmp_path / 'Windows User/.codex-local'
+    database = tmp_path / 'linux-state/sqlite'
+    render_install_assets(
+        repository_root=ROOT, deployment_path=ROOT / 'config/deployment.toml',
+        release_path=ROOT / 'config/codex-release.json', output_dir=assets,
+        home=tmp_path / 'linux-home', user='alice', runtime_root=tmp_path / 'runtime',
+        ssh_path=Path('/usr/bin/ssh'), codex_home=shared, sqlite_home=database,
+    )
+    render_gui_assets(assets, assets / 'gui')
+    cli = tomllib.loads((assets / 'local.config.toml').read_text())
+    gui = tomllib.loads((assets / 'gui/config.toml').read_text())
+    base = tomllib.loads((assets / 'config.toml').read_text())
+    assert cli['sqlite_home'] == gui['sqlite_home'] == base['sqlite_home'] == str(database)
+    assert Path(cli['model_catalog_json']) == shared / gui['model_catalog_json']
+    assert Path(cli['model_instructions_file']) == shared / gui['model_instructions_file']
+    assert cli['model_providers'] == gui['model_providers']
+
+
+def test_installer_rejects_linux_home_for_windows_gui(tmp_path):
+    result = subprocess.run(
+        ['bash', str(ROOT / 'scripts/install-local.sh'), '--wsl-gui', '--dry-run',
+         '--codex-home', str(tmp_path / 'linux-home')],
+        text=True, capture_output=True,
+    )
+    assert result.returncode != 0
+    assert 'Windows-backed --codex-home' in result.stderr
