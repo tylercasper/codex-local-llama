@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_altair_provider.deployment import (
+from codex_local_provider.deployment import (
     load_deployment,
     load_release,
     render_install_assets,
@@ -19,7 +19,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 def test_render_install_assets(tmp_path: Path) -> None:
     home = tmp_path / "home" / "alice"
-    runtime_root = home / ".local" / "lib" / "codex-altair"
+    runtime_root = home / ".local" / "lib" / "codex-local"
     output_dir = tmp_path / "rendered"
 
     render_install_assets(
@@ -33,12 +33,12 @@ def test_render_install_assets(tmp_path: Path) -> None:
         ssh_path=Path("/usr/bin/ssh"),
     )
 
-    with (output_dir / "altair.config.toml").open("rb") as handle:
+    with (output_dir / "local.config.toml").open("rb") as handle:
         profile = tomllib.load(handle)
     assert profile["model"] == "qwen3.8-27b"
-    assert profile["model_provider"] == "altair"
-    assert profile["model_catalog_json"] == str(home / ".codex-altair/model-catalog.json")
-    assert profile["model_providers"]["altair"]["base_url"] == (
+    assert profile["model_provider"] == "llamacpp"
+    assert profile["model_catalog_json"] == str(home / ".codex-local/model-catalog.json")
+    assert profile["model_providers"]["llamacpp"]["base_url"] == (
         "http://127.0.0.1:18000/v1"
     )
 
@@ -52,14 +52,14 @@ def test_render_install_assets(tmp_path: Path) -> None:
         "target": "x86_64-unknown-linux-musl",
     }
 
-    provider_unit = (output_dir / "codex-altair-provider.service").read_text(
+    provider_unit = (output_dir / "codex-local-provider.service").read_text(
         encoding="utf-8"
     )
     assert "User=alice" in provider_unit
-    assert str(runtime_root / "provider/current/.venv/bin/codex-altair-provider") in (
+    assert str(runtime_root / "provider/current/.venv/bin/codex-local-provider") in (
         provider_unit
     )
-    tunnel_unit = (output_dir / "codex-altair-tunnel.service").read_text(
+    tunnel_unit = (output_dir / "codex-local-tunnel.service").read_text(
         encoding="utf-8"
     )
     assert '-L "127.0.0.1:18001:127.0.0.1:8001"' in tunnel_unit
@@ -73,7 +73,7 @@ def test_load_deployment_rejects_duplicate_local_ports(tmp_path: Path) -> None:
     deployment.write_text(
         """
 [remote]
-ssh_target = "altair"
+ssh_target = "llama-server"
 ssh_config = "~/.ssh/config"
 host = "127.0.0.1"
 port = 8001

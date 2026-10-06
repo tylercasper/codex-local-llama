@@ -1,7 +1,7 @@
 [Unit]
-Description=Codex Altair Responses and standalone web-search adapter
-Requires=codex-altair-tunnel.service
-After=codex-altair-tunnel.service
+Description=Codex Responses and standalone web-search adapter for llama.cpp
+Requires=codex-local-tunnel.service
+After=codex-local-tunnel.service
 
 [Service]
 Type=simple
@@ -9,7 +9,7 @@ User=@USER@
 WorkingDirectory=@WORKING_DIRECTORY@
 Environment=@UPSTREAM_ENV@
 Environment=PYTHONDONTWRITEBYTECODE=1
-LoadCredential=tavily_key:/etc/codex-altair/tavily.key
+LoadCredential=tavily_key:/etc/codex-local/tavily.key
 ExecStart=@PROVIDER_EXEC@ --host @PROVIDER_HOST@ --port @PROVIDER_PORT@
 Restart=on-failure
 RestartSec=3

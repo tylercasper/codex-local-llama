@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from codex_altair_provider.search import SearchProtocolError, execute_search_request
+from codex_local_provider.search import SearchProtocolError, execute_search_request
 
 
 class FakeTavily:

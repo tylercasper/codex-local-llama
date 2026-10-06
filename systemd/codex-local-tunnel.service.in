@@ -1,5 +1,5 @@
 [Unit]
-Description=SSH tunnel from Codex Altair provider to llama.cpp
+Description=SSH tunnel from the local Codex provider to llama.cpp
 Wants=network-online.target
 After=network-online.target
 

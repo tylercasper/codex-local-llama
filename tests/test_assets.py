@@ -19,7 +19,7 @@ def test_model_catalog_matches_deployment_defaults() -> None:
     assert model["supports_parallel_tool_calls"] is False
     assert model["use_responses_lite"] is False
 
-    config = (REPOSITORY_ROOT / "config/codex-altair.toml.in").read_text(
+    config = (REPOSITORY_ROOT / "config/codex-local.toml.in").read_text(
         encoding="utf-8"
     )
     assert "model = @MODEL_ID@" in config
@@ -29,13 +29,13 @@ def test_model_catalog_matches_deployment_defaults() -> None:
 
 def test_portable_assets_do_not_embed_install_user() -> None:
     paths = [
-        REPOSITORY_ROOT / "config/codex-altair.toml.in",
+        REPOSITORY_ROOT / "config/codex-local.toml.in",
         REPOSITORY_ROOT / "config/deployment.toml",
-        REPOSITORY_ROOT / "scripts/codex-altair",
+        REPOSITORY_ROOT / "scripts/codex-local",
         REPOSITORY_ROOT / "scripts/install-local.sh",
         REPOSITORY_ROOT / "scripts/verify-local.sh",
-        REPOSITORY_ROOT / "systemd/codex-altair-provider.service.in",
-        REPOSITORY_ROOT / "systemd/codex-altair-tunnel.service.in",
+        REPOSITORY_ROOT / "systemd/codex-local-provider.service.in",
+        REPOSITORY_ROOT / "systemd/codex-local-tunnel.service.in",
     ]
     for path in paths:
         assert "/home/example" not in path.read_text(encoding="utf-8"), path

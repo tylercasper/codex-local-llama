@@ -110,7 +110,7 @@ def render_install_assets(
         _reject_newline(path.as_posix(), "path")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    isolated_home = home / ".codex-altair"
+    isolated_home = home / ".codex-local"
     provider_runtime = runtime_root / "provider" / "current"
     model_catalog_path = isolated_home / "model-catalog.json"
     provider_base_url = (
@@ -118,7 +118,7 @@ def render_install_assets(
     )
 
     profile_template = (
-        repository_root / "config" / "codex-altair.toml.in"
+        repository_root / "config" / "codex-local.toml.in"
     ).read_text(encoding="utf-8")
     profile = _replace_tokens(
         profile_template,
@@ -129,9 +129,11 @@ def render_install_assets(
             "PROVIDER_BASE_URL": _toml_string(provider_base_url),
         },
     )
-    (output_dir / "altair.config.toml").write_text(profile, encoding="utf-8")
+    (output_dir / "local.config.toml").write_text(profile, encoding="utf-8")
     (output_dir / "config.toml").write_text(
-        'approval_policy = "on-request"\napprovals_reviewer = "user"\n',
+        'approval_policy = "on-request"\n'
+        'sandbox_mode = "workspace-write"\n'
+        'approvals_reviewer = "user"\n',
         encoding="utf-8",
     )
 
@@ -156,7 +158,7 @@ def render_install_assets(
     )
 
     provider_template = (
-        repository_root / "systemd" / "codex-altair-provider.service.in"
+        repository_root / "systemd" / "codex-local-provider.service.in"
     ).read_text(encoding="utf-8")
     provider_service = _replace_tokens(
         provider_template,
@@ -164,22 +166,22 @@ def render_install_assets(
             "USER": user,
             "WORKING_DIRECTORY": _systemd_path(provider_runtime),
             "UPSTREAM_ENV": _systemd_string(
-                "CODEX_ALTAIR_UPSTREAM_URL="
+                "CODEX_LOCAL_UPSTREAM_URL="
                 f"http://{deployment.local_host}:{deployment.tunnel_port}"
             ),
             "PROVIDER_EXEC": _systemd_string(
-                (provider_runtime / ".venv" / "bin" / "codex-altair-provider").as_posix()
+                (provider_runtime / ".venv" / "bin" / "codex-local-provider").as_posix()
             ),
             "PROVIDER_HOST": _systemd_string(deployment.local_host),
             "PROVIDER_PORT": str(deployment.provider_port),
         },
     )
-    (output_dir / "codex-altair-provider.service").write_text(
+    (output_dir / "codex-local-provider.service").write_text(
         provider_service, encoding="utf-8"
     )
 
     tunnel_template = (
-        repository_root / "systemd" / "codex-altair-tunnel.service.in"
+        repository_root / "systemd" / "codex-local-tunnel.service.in"
     ).read_text(encoding="utf-8")
     tunnel_service = _replace_tokens(
         tunnel_template,
@@ -195,7 +197,7 @@ def render_install_assets(
             "SSH_TARGET": _systemd_string(deployment.ssh_target),
         },
     )
-    (output_dir / "codex-altair-tunnel.service").write_text(
+    (output_dir / "codex-local-tunnel.service").write_text(
         tunnel_service, encoding="utf-8"
     )
 
@@ -333,7 +335,9 @@ def _reject_newline(value: str, label: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Render portable Codex Altair assets")
+    parser = argparse.ArgumentParser(
+        description="Render portable Codex assets for a self-hosted llama.cpp server"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     render = subparsers.add_parser("render")

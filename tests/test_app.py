@@ -5,8 +5,8 @@ import json
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from codex_altair_provider.app import create_app
-from codex_altair_provider.config import Settings
+from codex_local_provider.app import create_app
+from codex_local_provider.config import Settings
 
 
 class FakeTavily:

@@ -18,7 +18,7 @@ class Settings:
     def from_environment(cls) -> "Settings":
         return cls(
             upstream_url=os.environ.get(
-                "CODEX_ALTAIR_UPSTREAM_URL", "http://127.0.0.1:18001"
+                "CODEX_LOCAL_UPSTREAM_URL", "http://127.0.0.1:18001"
             ).rstrip("/"),
             tavily_base_url=os.environ.get(
                 "TAVILY_BASE_URL", "https://api.tavily.com"
@@ -31,7 +31,7 @@ class Settings:
                 os.environ.get("TAVILY_TIMEOUT_SECONDS", "60")
             ),
             upstream_idle_timeout_seconds=float(
-                os.environ.get("CODEX_ALTAIR_UPSTREAM_IDLE_TIMEOUT_SECONDS", "910")
+                os.environ.get("CODEX_LOCAL_UPSTREAM_IDLE_TIMEOUT_SECONDS", "910")
             ),
         )
 

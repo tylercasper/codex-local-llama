@@ -2,8 +2,8 @@
   "models": [
     {
       "slug": "qwen3.8-27b",
-      "display_name": "Qwen3.8 27B (Altair)",
-      "description": "Qwen3.8 27B served by llama.cpp on llama-server.",
+      "display_name": "Qwen3.8 27B (llama.cpp)",
+      "description": "Qwen3.8 27B served by a self-hosted llama.cpp server.",
       "default_reasoning_level": null,
       "supported_reasoning_levels": [],
       "shell_type": "shell_command",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from codex_altair_provider.transforms import (
+from codex_local_provider.transforms import (
     SSETransformer,
     flatten_web_namespace,
     normalize_instruction_messages,

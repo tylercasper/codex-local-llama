@@ -7,7 +7,7 @@ if [[ ${1:-} == --allow-degraded ]]; then
     shift
 fi
 if (($#)); then
-    echo "usage: codex-altair-verify [--allow-degraded]" >&2
+    echo "usage: codex-local-verify [--allow-degraded]" >&2
     exit 2
 fi
 
@@ -21,7 +21,7 @@ for command_name in python3 curl systemctl; do
         || fail "required command not found: $command_name"
 done
 
-isolated_home="${CODEX_ALTAIR_HOME:-${HOME:?}/.codex-altair}"
+isolated_home="${CODEX_LOCAL_HOME:-${HOME:?}/.codex-local}"
 deployment_path="$isolated_home/deployment.json"
 [[ -r "$deployment_path" ]] || fail "deployment manifest not found: $deployment_path"
 
@@ -47,7 +47,7 @@ codex_binary="$runtime_root/codex/current/bin/codex"
 "$codex_binary" --version | grep -F "$codex_version" >/dev/null \
     || fail "private Codex version does not match $codex_version"
 
-for unit in codex-altair-tunnel.service codex-altair-provider.service; do
+for unit in codex-local-tunnel.service codex-local-provider.service; do
     systemctl is-enabled --quiet "$unit" || fail "$unit is not enabled"
     systemctl is-active --quiet "$unit" || fail "$unit is not active"
 done
@@ -91,7 +91,7 @@ assert any(
 )
 ' "$model_id" || fail "model $model_id is not advertised by the provider"
 
-echo "codex-altair verification passed"
+echo "codex-local verification passed"
 echo "  Codex: $codex_version"
 echo "  model: $model_id"
 echo "  provider: $base_url"

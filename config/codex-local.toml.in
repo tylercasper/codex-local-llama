@@ -1,5 +1,5 @@
 model = @MODEL_ID@
-model_provider = "altair"
+model_provider = "llamacpp"
 model_catalog_json = @MODEL_CATALOG_PATH@
 model_context_window = @MODEL_CONTEXT_WINDOW@
 web_search = "live"
@@ -15,8 +15,8 @@ ignore_default_excludes = false
 [agents]
 enabled = false
 
-[model_providers.altair]
-name = "Altair llama.cpp"
+[model_providers.llamacpp]
+name = "Self-hosted llama.cpp"
 base_url = @PROVIDER_BASE_URL@
 wire_api = "responses"
 requires_openai_auth = false

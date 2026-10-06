@@ -5,7 +5,7 @@ usage() {
     cat <<'EOF'
 Usage: install-local.sh [options]
 
-Install the isolated Codex Altair harness for the current user.
+Install an isolated Codex harness for a self-hosted llama.cpp server.
 
 Options:
   --config PATH             Deployment TOML (default: config/deployment.toml)
@@ -27,7 +27,7 @@ require_command() {
 
 deployment_cli() {
     PYTHONPATH="$repo_root/src${PYTHONPATH:+:$PYTHONPATH}" \
-        "$python_cmd" -m codex_altair_provider.deployment "$@"
+        "$python_cmd" -m codex_local_provider.deployment "$@"
 }
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -83,8 +83,8 @@ python_cmd="$(command -v python3)"
 
 home_dir="${HOME:?HOME must be set}"
 service_user="$(id -un)"
-runtime_root="${CODEX_ALTAIR_RUNTIME_ROOT:-$home_dir/.local/lib/codex-altair}"
-isolated_home="$home_dir/.codex-altair"
+runtime_root="${CODEX_LOCAL_RUNTIME_ROOT:-$home_dir/.local/lib/codex-local}"
+isolated_home="$home_dir/.codex-local"
 bin_dir="$home_dir/.local/bin"
 ssh_path="$(command -v ssh || true)"
 [[ -n "$ssh_path" ]] || fail "required command not found: ssh"
@@ -153,7 +153,7 @@ fi
 
 [[ "$(uname -s)" == Linux ]] || fail "only Linux is supported"
 [[ "$(uname -m)" == x86_64 ]] || fail "this pinned package requires x86_64 Linux"
-for command_name in uv curl tar sha256sum systemctl sudo install cp mv ln find grep; do
+for command_name in uv curl tar sha256sum systemctl sudo install cp mv ln find grep awk; do
     require_command "$command_name"
 done
 [[ -r "$ssh_config" ]] || fail "SSH config is not readable: $ssh_config"
@@ -181,7 +181,7 @@ if ! UV_PROJECT_ENVIRONMENT="$provider_release/.venv" \
     fi
     fail "provider installation failed"
 fi
-"$provider_release/.venv/bin/codex-altair-provider" --help >/dev/null
+"$provider_release/.venv/bin/codex-local-provider" --help >/dev/null
 ln -sfn "releases/$provider_version" "$runtime_root/provider/current"
 
 codex_release_name="$codex_version-$codex_target"
@@ -240,27 +240,27 @@ install -d -m 0700 "$isolated_home"
 if [[ ! -e "$isolated_home/config.toml" ]]; then
     install -m 0600 "$render_dir/config.toml" "$isolated_home/config.toml"
 fi
-install -m 0600 "$render_dir/altair.config.toml" "$isolated_home/altair.config.toml"
+install -m 0600 "$render_dir/local.config.toml" "$isolated_home/local.config.toml"
 install -m 0600 "$render_dir/model-catalog.json" "$isolated_home/model-catalog.json"
 install -m 0600 "$render_dir/deployment.json" "$isolated_home/deployment.json"
 install -d -m 0755 "$bin_dir"
-install -m 0755 "$repo_root/scripts/codex-altair" "$bin_dir/codex-altair"
-install -m 0755 "$repo_root/scripts/verify-local.sh" "$bin_dir/codex-altair-verify"
+install -m 0755 "$repo_root/scripts/codex-local" "$bin_dir/codex-local"
+install -m 0755 "$repo_root/scripts/verify-local.sh" "$bin_dir/codex-local-verify"
 
-sudo install -d -m 0755 /etc/codex-altair
+sudo install -d -m 0755 /etc/codex-local
 if [[ -n "$tavily_key_file" ]]; then
-    sudo install -m 0600 "$tavily_key_file" /etc/codex-altair/tavily.key
-elif ! sudo test -e /etc/codex-altair/tavily.key; then
-    sudo install -m 0600 /dev/null /etc/codex-altair/tavily.key
+    sudo install -m 0600 "$tavily_key_file" /etc/codex-local/tavily.key
+elif ! sudo test -e /etc/codex-local/tavily.key; then
+    sudo install -m 0600 /dev/null /etc/codex-local/tavily.key
 fi
-sudo install -m 0644 "$render_dir/codex-altair-tunnel.service" \
-    /etc/systemd/system/codex-altair-tunnel.service
-sudo install -m 0644 "$render_dir/codex-altair-provider.service" \
-    /etc/systemd/system/codex-altair-provider.service
+sudo install -m 0644 "$render_dir/codex-local-tunnel.service" \
+    /etc/systemd/system/codex-local-tunnel.service
+sudo install -m 0644 "$render_dir/codex-local-provider.service" \
+    /etc/systemd/system/codex-local-provider.service
 sudo systemctl daemon-reload
-sudo systemctl enable codex-altair-tunnel.service codex-altair-provider.service
-sudo systemctl restart codex-altair-tunnel.service
-sudo systemctl restart codex-altair-provider.service
+sudo systemctl enable codex-local-tunnel.service codex-local-provider.service
+sudo systemctl restart codex-local-tunnel.service
+sudo systemctl restart codex-local-provider.service
 
-"$bin_dir/codex-altair-verify"
-echo "Installed codex-altair. Launch it with: $bin_dir/codex-altair"
+"$bin_dir/codex-local-verify"
+echo "Installed codex-local. Launch it with: $bin_dir/codex-local"

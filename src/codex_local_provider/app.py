@@ -23,7 +23,7 @@ from .transforms import (
     restore_web_namespace_calls,
 )
 
-LOGGER = logging.getLogger("codex_altair_provider")
+LOGGER = logging.getLogger("codex_local_provider")
 
 SESSION_KEY: web.AppKey[aiohttp.ClientSession] = web.AppKey("session")
 SETTINGS_KEY: web.AppKey[Settings] = web.AppKey("settings")
@@ -157,7 +157,7 @@ async def _standalone_search(request: web.Request) -> web.Response:
     if tavily is None:
         return _error_response(
             503,
-            "Tavily is not configured; install the API key and restart codex-altair-provider",
+            "Tavily is not configured; install the API key and restart codex-local-provider",
         )
     try:
         payload = await request.json()
@@ -272,7 +272,7 @@ def _response_headers(headers: aiohttp.typedefs.LooseHeaders) -> dict[str, str]:
 
 def _error_response(status: int, message: str) -> web.Response:
     return web.json_response(
-        {"error": {"type": "codex_altair_provider_error", "message": message}},
+        {"error": {"type": "codex_local_provider_error", "message": message}},
         status=status,
     )
 

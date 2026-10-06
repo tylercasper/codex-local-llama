@@ -1,32 +1,33 @@
-# Codex Altair Provider
+# Codex for a self-hosted llama.cpp server
 
-This repository installs an isolated Codex CLI connected to the Qwen model served by
-llama.cpp on `llama-server`. A narrow local adapter forwards Responses traffic and supplies
-Codex's standalone `web.run` tool through Tavily.
+This repository installs an isolated Codex CLI connected to a model served by llama.cpp.
+A narrow local adapter forwards Responses traffic and supplies Codex's standalone
+`web.run` tool through Tavily.
 
-The `codex-altair` command has its own Codex binary, home, model catalog, provider, and
+The `codex-local` command has its own Codex binary, home, model catalog, provider, and
 services. The regular `codex` command and its configuration are not part of this setup.
+The `-local` suffix exists only to avoid colliding with that regular installation.
 
 ## What gets installed
 
-- `~/.local/bin/codex-altair` and `codex-altair-verify`
-- a pinned Codex release under `~/.local/lib/codex-altair/codex/`
-- an immutable provider environment under `~/.local/lib/codex-altair/provider/`
-- Altair-only configuration under `~/.codex-altair/`
-- `codex-altair-tunnel.service` and `codex-altair-provider.service`
-- a root-readable Tavily credential at `/etc/codex-altair/tavily.key`
+- `~/.local/bin/codex-local` and `codex-local-verify`
+- a pinned Codex release under `~/.local/lib/codex-local/codex/`
+- a versioned provider environment under `~/.local/lib/codex-local/provider/`
+- isolated configuration under `~/.codex-local/`
+- `codex-local-tunnel.service` and `codex-local-provider.service`
+- a root-readable Tavily credential at `/etc/codex-local/tavily.key`
 
-The default network route is:
+The network route is configurable. The checked-in deployment uses:
 
 ```text
-codex-altair -> 127.0.0.1:18000 adapter -> 127.0.0.1:18001 SSH tunnel
-             -> llama-server:127.0.0.1:8001 llama.cpp
+codex-local -> 127.0.0.1:18000 adapter -> 127.0.0.1:18001 SSH tunnel
+             -> configured SSH target -> 127.0.0.1:8001 llama.cpp
 ```
 
 ## Configure and install
 
-Prerequisites are x86_64 Linux, Python 3.12+, `uv`, SSH access to `llama-server`, systemd,
-and sudo access for the two system units and Tavily credential.
+Prerequisites are x86_64 Linux, Python 3.12+, `uv`, SSH access to the configured llama.cpp
+host, systemd, and sudo access for the two system units and Tavily credential.
 
 Review [`config/deployment.toml`](config/deployment.toml), especially the SSH target and
 the llama.cpp port. Then validate the rendered deployment without changing anything:
@@ -48,8 +49,8 @@ metadata matches [`config/codex-release.json`](config/codex-release.json):
 ./scripts/install-local.sh --codex-release-dir /path/to/extracted/package
 ```
 
-The installer preserves an existing `~/.codex-altair/config.toml`. It owns and refreshes
-the `altair.config.toml`, model catalog, deployment manifest, private runtimes, launcher,
+The installer preserves an existing `~/.codex-local/config.toml`. It owns and refreshes
+the `local.config.toml`, model catalog, deployment manifest, private runtimes, launcher,
 and service units.
 
 Install the Tavily key during setup without adding it to this repository:
@@ -58,7 +59,7 @@ Install the Tavily key during setup without adding it to this repository:
 ./scripts/install-local.sh --tavily-key-file /secure/path/to/tavily.key
 ```
 
-If the key file already exists at `/etc/codex-altair/tavily.key`, rerunning the installer
+If the key file already exists at `/etc/codex-local/tavily.key`, rerunning the installer
 preserves it unless `--tavily-key-file` is supplied.
 
 ## Verify and launch
@@ -68,12 +69,12 @@ health, Tavily readiness, and the advertised model. It performs no inference and
 Tavily credits.
 
 ```bash
-codex-altair-verify
-codex-altair
+codex-local-verify
+codex-local
 ```
 
 For an installation that intentionally has no Tavily key yet, use
-`codex-altair-verify --allow-degraded`.
+`codex-local-verify --allow-degraded`.
 
 ## Development
 
@@ -106,13 +107,13 @@ then rerun the installer to upgrade the private Codex release.
 Useful diagnostics:
 
 ```bash
-codex-altair-verify
-journalctl -u codex-altair-tunnel.service -u codex-altair-provider.service --since today
+codex-local-verify
+journalctl -u codex-local-tunnel.service -u codex-local-provider.service --since today
 curl -fsS http://127.0.0.1:18000/healthz
 ```
 
 To disable the harness without removing its files:
 
 ```bash
-sudo systemctl disable --now codex-altair-provider.service codex-altair-tunnel.service
+sudo systemctl disable --now codex-local-provider.service codex-local-tunnel.service
 ```
