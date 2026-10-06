@@ -2,7 +2,54 @@
 set -euo pipefail
 
 runtime_root="${CODEX_LOCAL_RUNTIME_ROOT:-${HOME:?}/.local/lib/codex-local}"
-export CODEX_HOME="${CODEX_LOCAL_HOME:-${HOME}/.codex-local}"
+installed_home="${HOME}/.codex-local"
+if [[ -r "$runtime_root/codex-home" ]]; then
+    IFS= read -r installed_home < "$runtime_root/codex-home"
+fi
+export CODEX_HOME="${CODEX_LOCAL_HOME:-$installed_home}"
 unset OPENAI_API_KEY OPENAI_BASE_URL CODEX_OSS_BASE_URL CODEX_OSS_PORT
 
-exec "$runtime_root/codex/current/bin/codex" --profile local "$@"
+# Project config has higher priority than a profile. In particular, launching
+# from $HOME can load the ordinary ~/.codex/config.toml as project config.
+# Promote the local model selection to CLI defaults so it stays local there.
+model_overrides="$(python3 - "$CODEX_HOME" <<'PY'
+import json
+from pathlib import Path
+import re
+import sys
+import tomllib
+
+home = Path(sys.argv[1])
+config = {}
+providers = {}
+try:
+    for name in ("config.toml", "local.config.toml"):
+        path = home / name
+        if path.exists():
+            layer = tomllib.loads(path.read_text())
+            config.update(layer)
+            for provider, settings in layer.get("model_providers", {}).items():
+                providers.setdefault(provider, {}).update(settings)
+    model = config["model"]
+    provider = config["model_provider"]
+    if not isinstance(provider, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", provider):
+        raise ValueError("model_provider must be a simple provider identifier")
+    base_url = providers[provider]["base_url"]
+    effort = config.get("model_reasoning_effort", "none")
+    overrides = {
+        "model": model,
+        "model_provider": provider,
+        "model_reasoning_effort": effort,
+        f"model_providers.{provider}.base_url": base_url,
+    }
+    for key, value in overrides.items():
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"{key} must be a nonempty string")
+        print("-c")
+        print(f"{key}={json.dumps(value)}")
+except (OSError, ValueError, KeyError, TypeError) as error:
+    sys.exit(f"codex-local: cannot resolve local model configuration: {error}")
+PY
+)"
+mapfile -t local_model_args <<< "$model_overrides"
+exec "$runtime_root/codex/current/bin/codex" --profile local "${local_model_args[@]}" "$@"
