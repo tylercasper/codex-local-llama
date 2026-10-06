@@ -1,4 +1,5 @@
 model = @MODEL_ID@
+model_reasoning_effort = "none"
 model_provider = "llamacpp"
 model_catalog_json = @MODEL_CATALOG_PATH@
 model_context_window = @MODEL_CONTEXT_WINDOW@

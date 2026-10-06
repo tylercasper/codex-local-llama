@@ -11,8 +11,17 @@ def test_model_catalog_matches_deployment_defaults() -> None:
     catalog = json.loads(
         (REPOSITORY_ROOT / "config/model-catalog.json").read_text(encoding="utf-8")
     )
-    assert len(catalog["models"]) == 1
+    assert len(catalog["models"]) == 2
     model = catalog["models"][0]
+    assert model["default_reasoning_level"] == "none"
+    assert [entry["effort"] for entry in model["supported_reasoning_levels"]] == [
+        "none", "low", "medium", "xhigh"
+    ]
+    reviewer = catalog["models"][1]
+    assert reviewer["slug"] == model["auto_review_model_override"] == "local"
+    assert reviewer["visibility"] == "hide"
+    assert reviewer["default_reasoning_level"] == "none"
+    assert [entry["effort"] for entry in reviewer["supported_reasoning_levels"]] == ["none"]
     assert model["slug"] == "qwen3.8-27b"
     assert model["context_window"] == 262_144
     assert model["max_context_window"] == 262_144

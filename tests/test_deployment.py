@@ -42,6 +42,17 @@ def test_render_install_assets(tmp_path: Path) -> None:
         "http://127.0.0.1:18000/v1"
     )
 
+    catalog = json.loads((output_dir / "model-catalog.json").read_text())
+    reviewer = next(
+        entry for entry in catalog["models"]
+        if entry["slug"] == catalog["models"][0]["auto_review_model_override"]
+    )
+    assert reviewer["visibility"] == "hide"
+    assert reviewer["default_reasoning_level"] == "none"
+    assert reviewer["base_instructions"] == catalog["models"][0]["base_instructions"]
+    assert reviewer["context_window"] == catalog["models"][0]["context_window"]
+    assert profile["model_reasoning_effort"] == "none"
+
     deployment = json.loads(
         (output_dir / "deployment.json").read_text(encoding="utf-8")
     )

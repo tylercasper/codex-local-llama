@@ -153,8 +153,18 @@ def render_install_assets(
             "auto_compact_token_limit": int(deployment.model_context_window * 0.9),
         }
     )
+    models = [model]
+    for extra in catalog["models"][1:]:
+        extra = copy.deepcopy(extra)
+        extra.update(
+            context_window=deployment.model_context_window,
+            max_context_window=deployment.model_context_window,
+            auto_compact_token_limit=int(deployment.model_context_window * 0.9),
+            base_instructions=model["base_instructions"],
+        )
+        models.append(extra)
     (output_dir / "model-catalog.json").write_text(
-        json.dumps({"models": [model]}, indent=2) + "\n", encoding="utf-8"
+        json.dumps({"models": models}, indent=2) + "\n", encoding="utf-8"
     )
 
     provider_template = (
