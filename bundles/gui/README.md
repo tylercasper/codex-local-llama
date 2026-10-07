@@ -7,8 +7,8 @@ Supply the archive for the GUI you intend to install in this directory:
 
 | Platform | Archive | Vendor package version |
 | --- | --- | --- |
-| Native Linux | `chatgpt_amd64.deb` | `26.901.51231` |
-| Windows with WSL | `codex-windows-26.901.6511.0.tar.gz` | `26.901.6511.0` |
+| Native Linux | `chatgpt_amd64.deb` | `26.1002.51308` |
+| Windows with WSL | `codex-windows-26.930.7945.0.tar.gz` | `26.930.7945.0` |
 
 `linux.json` and `windows.json` record the required SHA-256 hashes. Installation
 fails on missing or mismatched inputs. There is currently no automated downloader
@@ -26,4 +26,11 @@ produce a different hash and must be reviewed as an explicit manifest change.
 Keep each archive intact, including its bundled backend. The installer does not
 replace `resources/codex`: `CODEX_CLI_PATH` selects a shim that validates and runs
 the complete source package shared with the CLI. The compatibility manifest
-requires the source version to match the version shipped with each frontend.
+records the actual bundled backend and pins the selected source revision for each
+frontend. The Linux stable-channel package currently bundles a prerelease backend;
+our explicit pairing keeps the active backend on stable `0.160.1`.
+
+The Linux archive comes from the official stable APT repository, verified against
+its signed `InRelease` and package checksums. The Windows archive is created from
+the official Microsoft Store MSIX after WinGet verifies its package hash. Neither
+archive contains user configuration, credentials, or conversation data.

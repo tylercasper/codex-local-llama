@@ -1,7 +1,7 @@
 {
   "asset": "chatgpt_amd64.deb",
   "package": "chatgpt",
-  "version": "26.901.51231",
+  "version": "26.1002.51308",
   "architecture": "amd64",
-  "sha256": "62580188d87c3d3a9369dab7c73b42a8a32518d4df8a2d5bae6466ddeac5c05e"
+  "sha256": "ce59a61b94def49cc921d694ef9521ec174eb8b65fdb0c285e3ba8e45231a21f"
 }

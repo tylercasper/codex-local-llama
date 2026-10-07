@@ -86,14 +86,14 @@ def test_pinned_codex_release_has_expected_identity() -> None:
         (REPOSITORY_ROOT / "config/codex-release.json").read_text(encoding="utf-8")
     )
     assert release == {
-        "version": "0.147.0",
+        "version": "0.160.1",
         "target": "x86_64-unknown-linux-musl",
         "asset": "codex-package-x86_64-unknown-linux-musl.tar.gz",
         "url": (
-            "https://releases.openai.com/codex/releases/0.147.0/"
+            "https://github.com/openai/codex/releases/download/rust-v0.160.1/"
             "codex-package-x86_64-unknown-linux-musl.tar.gz"
         ),
         "sha256": (
-            "bd758d53d56e41dc65e045f4589df79a038ed197a011adcb52a258e6ad64cfda"
+            "340801565906a7028f6baaa9ab6853addaef221f0016a1417a7c1ffdd96c21f0"
         ),
     }

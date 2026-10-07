@@ -46,6 +46,9 @@ def repository(tmp_path):
     commit(source)
     manifest = load_manifest(root)
     manifest['codex']['revision'] = git(source, 'rev-parse', 'HEAD')
+    for desktop in manifest['desktop'].values():
+        if 'source_revision' in desktop:
+            desktop['source_revision'] = manifest['codex']['revision']
     (root / 'config/compatibility.json').write_text(json.dumps(manifest))
     git(root, 'update-index', '--add', '--cacheinfo',
         f'160000,{manifest["codex"]["revision"]},vendor/codex')
@@ -194,3 +197,21 @@ def test_build_restores_source_lock_and_only_publishes_complete_packages(reposit
     assert lockfile.read_bytes() == original
     assert git(source, 'status', '--porcelain') == ''
     assert not list(tmp_path.glob('.source-package-*'))
+
+
+def test_different_bundled_backend_requires_the_exact_explicit_pairing(repository):
+    root, manifest, _ = repository
+    desktop = manifest['desktop']['linux']
+    desktop['bundled_backend_version'] = 'different-vendor-version'
+    desktop.pop('source_revision', None)
+    path = root / 'config/compatibility.json'
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='explicit source pairing'):
+        load_manifest(root)
+    desktop['source_revision'] = manifest['codex']['revision']
+    path.write_text(json.dumps(manifest))
+    assert load_manifest(root) == manifest
+    desktop['source_revision'] = '0' * 40
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='pairing differs'):
+        load_manifest(root)

@@ -17,6 +17,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from merge_gui_config import merge_gui_config
+from gui_preferences import enable_no_reasoning
 from gui_backend import BINDING, validate_install
 
 RESTRICTION = Path("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
@@ -123,7 +124,9 @@ def install(args):
     rendered = (args.assets_dir / "config.toml").read_text()
     tomllib.loads(rendered)
     merged = merge_gui_config(config.read_text(), rendered) if config.exists() else rendered
-    validate_install(args.assets_dir / BINDING, args.dry_run)
+    state_path = args.gui_home / ".codex-global-state.json"
+    preferences = enable_no_reasoning(state_path.read_text(encoding="utf-8-sig") if state_path.exists() else "{}")
+    validate_install(args.assets_dir / BINDING, args.dry_run, frontend=("linux", manifest))
     gui_root = args.runtime_root / "gui"
     release = gui_root / "releases" / (manifest["version"] + "-" + manifest["sha256"][:12])
     executable = release / "usr/lib/chatgpt/ChatGPT"
@@ -189,6 +192,7 @@ def install(args):
         desktop: (desktop_text(launcher, gui_root / "current/usr/lib/chatgpt/resources/icon-chatgpt.png").encode(), 0o644),
     }
     writes[config] = (merged.encode(), 0o600)
+    writes[state_path] = (preferences.encode(), 0o600)
     for name in ("codex-local-gui-wsl", "gui_backend.py"):
         writes[gui_root / "backend" / name] = ((Path(__file__).parent / name).read_bytes(), 0o755 if name == "codex-local-gui-wsl" else 0o644)
     writes[gui_root / "backend" / BINDING] = ((args.assets_dir / BINDING).read_bytes(), 0o600)

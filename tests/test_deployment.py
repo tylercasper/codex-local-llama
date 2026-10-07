@@ -80,7 +80,7 @@ def test_render_install_assets(tmp_path: Path) -> None:
     assert deployment["remote"]["ssh_config"] == str(home / ".ssh/config")
     assert deployment["paths"]["runtime_root"] == str(runtime_root)
     assert deployment["codex"] == {
-        "version": "0.147.0",
+        "version": "0.160.1",
         "target": "x86_64-unknown-linux-musl",
     }
 
@@ -134,7 +134,7 @@ def test_load_release_rejects_untrusted_url(tmp_path: Path) -> None:
     release_path.write_text(
         json.dumps(
             {
-                "version": "0.147.0",
+                "version": "0.160.1",
                 "target": "x86_64-unknown-linux-musl",
                 "asset": "codex.tar.gz",
                 "url": "https://example.com/codex.tar.gz",
@@ -143,7 +143,7 @@ def test_load_release_rejects_untrusted_url(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="releases.openai.com"):
+    with pytest.raises(ValueError, match="official OpenAI release source"):
         load_release(release_path)
 
 

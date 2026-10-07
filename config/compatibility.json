@@ -1,27 +1,33 @@
 {
   "schema_version": 1,
-  "stage": "synchronized-source",
+  "stage": "custom-stable-source",
   "codex": {
     "path": "vendor/codex",
-    "repository": "https://github.com/openai/codex.git",
-    "revision": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
-    "version": "0.153.4",
+    "repository": "https://github.com/tylercasper/codex.git",
+    "revision": "969c775829505b1b6ba4580cda67552d34ccd291",
+    "version": "0.160.1",
     "target": "x86_64-unknown-linux-gnu",
     "profile": "release",
-    "rust_toolchain": "1.95.0"
+    "rust_toolchain": "1.95.0",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "upstream_revision": "d27764b82f7118f674371e6d6e76271d9d606edb",
+    "upstream_tag": "rust-v0.160.1",
+    "auto_review_timeout_seconds": 180
   },
   "desktop": {
     "linux": {
       "manifest": "bundles/gui/linux.json",
       "backend": "source",
-      "source_backend_validation": "gui-verified",
-      "bundled_backend_version": "0.153.4"
+      "source_backend_validation": "gui-startup-model-picker-none-and-shared-history-verified",
+      "bundled_backend_version": "0.162.0-alpha.2",
+      "source_revision": "969c775829505b1b6ba4580cda67552d34ccd291"
     },
     "windows_wsl": {
       "manifest": "bundles/gui/windows.json",
       "backend": "source",
-      "source_backend_validation": "gui-verified-with-local-recovery-transport",
-      "bundled_backend_version": "0.153.4"
+      "source_backend_validation": "gui-startup-model-picker-none-shared-history-and-resume-verified",
+      "bundled_backend_version": "0.160.1",
+      "source_revision": "969c775829505b1b6ba4580cda67552d34ccd291"
     }
   },
   "reference_inference": {

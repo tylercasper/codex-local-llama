@@ -85,8 +85,10 @@ def load_release(path: Path) -> CodexRelease:
         raise ValueError(f"Unsupported Codex target: {release.target}")
     if not SHA256_PATTERN.fullmatch(release.sha256):
         raise ValueError("Codex release sha256 must contain 64 lowercase hex digits")
-    if not release.url.startswith("https://releases.openai.com/codex/releases/"):
-        raise ValueError("Codex release URL must use releases.openai.com")
+    official_sources = ("https://releases.openai.com/codex/releases/",
+                        "https://github.com/openai/codex/releases/download/")
+    if not release.url.startswith(official_sources):
+        raise ValueError("Codex release URL must use an official OpenAI release source")
     if not release.url.endswith(f"/{release.asset}"):
         raise ValueError("Codex release URL and asset name do not match")
     return release
@@ -110,7 +112,8 @@ def render_install_assets(
     release = load_release(release_path)
     if source_build:
         from .compatibility import load_manifest
-        pin = load_manifest(repository_root)["codex"]
+        compatibility = load_manifest(repository_root)
+        pin = compatibility["codex"]
         release = replace(release, version=pin["version"], target=pin["target"])
     if not USER_PATTERN.fullmatch(user):
         raise ValueError(f"Unsupported service user name: {user!r}")
@@ -120,9 +123,17 @@ def render_install_assets(
     output_dir.mkdir(parents=True, exist_ok=True)
     if source_build:
         (output_dir / "codex-local-backend.json").write_text(json.dumps({
-            "schema_version": 1, "backend": "source",
+            "schema_version": 2, "backend": "source",
             "package": str(runtime_root / "codex/current"), "source": pin,
-            "frontend_backend_version": pin["version"],
+            "frontends": {
+                platform: {
+                    "package": json.loads((repository_root / desktop["manifest"]).read_text()),
+                    "bundled_backend_version": desktop["bundled_backend_version"],
+                    "source_revision": desktop.get("source_revision", pin["revision"]),
+                }
+                for platform, desktop in compatibility["desktop"].items()
+                if desktop["backend"] == "source"
+            },
         }, indent=2) + "\n")
     isolated_home = codex_home if codex_home is not None else home / ".codex-local"
     for path in (isolated_home, sqlite_home):

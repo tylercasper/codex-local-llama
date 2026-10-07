@@ -36,7 +36,8 @@ def test_gui_assets_reuse_deployment_without_installed_home(tmp_path):
     assert config['sandbox_mode'] == 'workspace-write'
     binding = json.loads((destination / 'codex-local-backend.json').read_text())
     assert binding['package'] == str(tmp_path / 'runtime/codex/current')
-    assert binding['source']['version'] == binding['frontend_backend_version']
+    assert binding['schema_version'] == 2
+    assert all(frontend['source_revision'] == binding['source']['revision'] for frontend in binding['frontends'].values())
     assert json.loads((destination / 'model-catalog.json').read_text()) == json.loads(
         (assets / 'model-catalog.json').read_text())
     assert (destination / 'model-instructions.md').read_bytes() == (

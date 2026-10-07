@@ -91,3 +91,22 @@ def test_official_fallback_cannot_install_mismatched_gui():
     result = subprocess.run(['bash', str(ROOT / 'scripts/install-local.sh'), '--gui', '--official-release', '--dry-run'], text=True, capture_output=True)
     assert result.returncode != 0
     assert 'matching source backend' in result.stderr
+
+
+def test_explicit_frontend_pairing_rejects_a_different_archive_or_source(installed):
+    binding, _, _ = installed
+    value = json.loads(binding.read_text())
+    value['schema_version'] = 2
+    value.pop('frontend_backend_version')
+    manifest = {'version': 'vendor-version', 'sha256': 'a' * 64}
+    value['frontends'] = {'linux': {'package': manifest,
+        'bundled_backend_version': 'different-vendor-backend',
+        'source_revision': value['source']['revision']}}
+    binding.write_text(json.dumps(value))
+    assert validate_install(binding, True, ('linux', manifest)) == value
+    with pytest.raises(ValueError, match='archive differs'):
+        validate_install(binding, True, ('linux', {**manifest, 'sha256': 'b' * 64}))
+    value['frontends']['linux']['source_revision'] = '0' * 40
+    binding.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match='source pin'):
+        validate_install(binding, True, ('linux', manifest))

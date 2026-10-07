@@ -13,16 +13,22 @@ git submodule update --init --recursive
 
 Launch `codex-local` or the **Codex Local** application shortcut. GUI packages must be supplied locally as described in [`bundles/gui/README.md`](bundles/gui/README.md); their manifests are versioned, but the archives are excluded from Git. Existing official installations are preserved. Run `./scripts/install-local.sh --help` for configuration and verification options.
 
-The CLI and both GUI backends are built from official Codex `0.153.4`, pinned by
-`vendor/codex` and [`config/compatibility.json`](config/compatibility.json).
-The default source target is `x86_64-unknown-linux-gnu`; build it on the Linux
-system where it will run. Both recorded desktop packages shipped with backend
-`0.153.4`. Their frontend archives remain unchanged; the managed launchers select
-the complete source package at the same `codex/current` link used by the CLI.
+The CLI and both GUI backends use stable Codex `0.160.1` with a local patch
+extending the automatic approval-review deadline from 90 to **180 seconds**.
+`vendor/codex` points to the [Codex fork](https://github.com/tylercasper/codex),
+branch `local/0.160.1-review-180s`, based on official tag `rust-v0.160.1`.
+[`config/compatibility.json`](config/compatibility.json) records both the official
+base revision and the exact patched commit. Approval policy is unchanged.
 
-The Windows launcher starts the source backend through WSL normally. The
-temporary persistent WebSocket app-server used to recover a broken WSL launch
-is not part of this installer.
+The desktop archives come from the vendor's stable channels: Windows
+`26.930.7945.0` and Linux `26.1002.51308`. Windows ships backend `0.160.1`; the
+Linux stable-channel app ships `0.162.0-alpha.2`. Both managed launchers select
+our stable source package through `codex/current`. Frontend/backend compatibility
+is recorded as an explicit archive-and-source pairing, not inferred from release
+channel names or version equality. The complete vendor archives remain intact.
+
+The Windows launcher normally starts its backend through WSL. Temporary recovery
+transports for a broken host are not part of the portable installer.
 
 ## Building and selecting the CLI
 
@@ -42,8 +48,9 @@ provided. The package includes `codex`, `codex-code-mode-host`, `bwrap`, `rg`, a
 the upstream shell resource. `codex-local-build.json` records its source pin,
 toolchain, resolved compatibility manifest, and file checksums. Installation
 checks those fingerprints and uses a separate versioned runtime directory.
-Previous installed packages are preserved. GUI installation requires a matching
-source package and validates its complete fingerprints. At launch, the GUI checks
+Previous installed packages are preserved. GUI installation requires the explicitly
+paired source package and validates its complete fingerprints and frontend archive.
+At launch, the GUI checks
 the installed package's source pin against its own binding and fails explicitly
 if they differ. Updating the CLI independently cannot silently switch the GUI to
 an incompatible backend. Update both with `--gui` or `--wsl-gui`.
@@ -53,7 +60,7 @@ crates. The builder temporarily normalizes only those local version fields,
 builds with `--locked`, and restores the upstream file. External dependency
 versions are not updated. Concurrent or unexpected edits cause a failure.
 
-To select the previous official binary distribution explicitly:
+To select the unpatched official binary distribution explicitly:
 
 ```bash
 ./scripts/install-local.sh --official-release
@@ -61,9 +68,9 @@ To select the previous official binary distribution explicitly:
 ./scripts/install-local.sh --codex-release-dir /path/to/official-package
 ```
 
-That CLI-only fallback retains the original `0.147.0` musl archive pin in
+That CLI-only fallback uses the official `0.160.1` musl archive pin in
 [`config/codex-release.json`](config/codex-release.json). It cannot be combined
-with GUI installation. An existing source-bound GUI will refuse that older CLI
+with GUI installation. An existing source-bound GUI will refuse that unpatched CLI
 until the matching source package is restored. `--dry-run` renders the selected
 configuration without compiling or changing services.
 
@@ -84,15 +91,21 @@ Installation saves the resolved record as `compatibility.json` in the selected
 Codex home. Source packages retain their build record in the runtime directory.
 Passing acceptance results belong with the tested Git commit/release; this
 manifest does not itself certify that tests passed. The current stage is
-`synchronized-source`: CLI and desktop select the same official source revision.
-The per-platform validation fields distinguish protocol checks from desktop UI
-acceptance; version alignment alone is not a GUI test. The current Linux pairing
-passed rendering, local-provider selection, and project creation. The Windows
-pairing passed rendering and local-provider selection through a machine-local
-recovery transport; normal Windows-to-WSL process launch could not be retested
-because that host's WSL service rejects new process launches. Both backends read
-the same existing conversation set with identical transcript turn counts. Local
-llama.cpp inference and sandboxed file tools also passed on the source build.
+`custom-stable-source`: all local clients select the same patched stable backend.
+Each desktop entry records the backend shipped in its archive, the selected source
+revision, and the scope of validation performed. Version alignment alone is not a
+GUI test. Back up the existing profile before installation, then validate startup,
+the local model picker, conversation resumption, and tool use. This pairing passed
+GUI startup and **None** selection on both platforms, existing-conversation
+resumption, and local llama.cpp inference with sandboxed file tools. The Windows
+GUI also passed the standard Windows-to-WSL launch path.
+
+For an upgrade, choose an official stable Codex tag, carry the small timeout patch
+on the fork, and update the submodule plus manifest to the resulting commit. Obtain
+the current stable-channel desktop archives and record their actual bundled
+backend versions and checksums. A different bundled backend requires an explicit
+`source_revision` pairing and GUI validation; do not select a prerelease backend
+merely because it ships inside a stable-channel desktop package.
 
 ## Shared conversation home
 
@@ -100,7 +113,9 @@ llama.cpp inference and sandboxed file tools also passed on the source build.
 the same directory through `/mnt/c/Users/<user>/.codex-local`, following
 [OpenAI's shared-home guidance](https://learn.chatgpt.com/docs/windows/windows-app#share-config-auth-and-sessions-with-wsl).
 Use `--codex-home /mnt/c/Users/<user>/.codex-local` to select it explicitly.
-The installer records that location in the private runtime's `codex-home` file;
+Close the local GUI applications before an upgrade so their desktop preferences
+can be merged safely. The installer records that location in the private runtime's
+`codex-home` file;
 the CLI, Linux GUI, verification command, and subsequent installs reuse it. An
 explicit `CODEX_LOCAL_HOME` overrides the recorded location for CLI and Linux GUI.
 Native Linux installs also share one home between their CLI and GUI.
@@ -133,7 +148,13 @@ the other.
 
 The adapter translates Codex's freeform `apply_patch` protocol and `view_image`
 outputs for llama.cpp, and forwards raw reasoning text into Codex's visible
-reasoning channel. It cannot display reasoning tokens when the backend does not
+reasoning channel. The GUI picker exposes **None**, **Light**, **Medium**, and
+**Extra High** for the reference model. **None** disables thinking; **Light** is
+`low` effort and still enables thinking. Installation enables `none` in the
+desktop's separate reasoning-visibility preference while preserving its other
+settings and existing per-conversation selections.
+
+It cannot display reasoning tokens when the backend does not
 generate them. The default effort is `none`; the catalog also exposes `low`,
 `medium`, and `xhigh`, with approval reviews kept at `none`. The active custom
 prompt also discourages reasoning; its source and license are in [`prompts/`](prompts/).

@@ -48,8 +48,12 @@ def load_manifest(root: Path) -> dict:
             raise ValueError("Desktop archive name must be a filename")
         if desktop["backend"] not in {"bundled", "source"}:
             raise ValueError("Unsupported desktop backend")
-        if desktop["backend"] == "source" and desktop["bundled_backend_version"] != codex["version"]:
-            raise ValueError("Desktop and source backend versions must match")
+        if desktop["backend"] == "source":
+            pairing = desktop.get("source_revision")
+            if pairing is not None and pairing != codex["revision"]:
+                raise ValueError("Desktop source pairing differs from the pinned revision")
+            if desktop["bundled_backend_version"] != codex["version"] and pairing is None:
+                raise ValueError("Different desktop/backend versions require an explicit source pairing")
     return manifest
 
 
