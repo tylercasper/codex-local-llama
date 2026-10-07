@@ -151,8 +151,10 @@ outputs for llama.cpp, and forwards raw reasoning text into Codex's visible
 reasoning channel. The GUI picker exposes **None**, **Light**, **Medium**, and
 **Extra High** for the reference model. **None** disables thinking; **Light** is
 `low` effort and still enables thinking. Installation enables `none` in the
-desktop's separate reasoning-visibility preference while preserving its other
-settings and existing per-conversation selections.
+desktop's separate reasoning-visibility preference,
+`[desktop].enabled-reasoning-efforts` in `config.toml`. It preserves other
+settings and per-conversation selections, and imports any legacy visibility
+choices from `.codex-global-state.json` when that TOML setting is absent.
 
 It cannot display reasoning tokens when the backend does not
 generate them. The default effort is `none`; the catalog also exposes `low`,

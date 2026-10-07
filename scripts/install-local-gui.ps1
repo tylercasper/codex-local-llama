@@ -34,7 +34,7 @@ $utf8 = New-Object System.Text.UTF8Encoding $false
 $hadConfigHome = Test-Path $configHome
 $hadGuiData = Test-Path $guiData
 $savedFiles = @{}
-foreach ($path in @((Join-Path $configHome '.codex-global-state.json'), (Join-Path $configHome 'config.toml'), (Join-Path $configHome 'model-catalog.json'), (Join-Path $configHome 'model-instructions.md'), (Join-Path $configHome 'compatibility.json'), $shortcutPath)) {
+foreach ($path in @((Join-Path $configHome 'config.toml'), (Join-Path $configHome 'model-catalog.json'), (Join-Path $configHome 'model-instructions.md'), (Join-Path $configHome 'compatibility.json'), $shortcutPath)) {
     $savedFiles[$path] = if (Test-Path $path) { [IO.File]::ReadAllBytes($path) } else { $null }
 }
 $activated = $false
@@ -57,15 +57,13 @@ try {
         --rendered (ConvertTo-WslPath (Join-Path $LocalConfigDirectory 'config.toml')) `
         --output (ConvertTo-WslPath $mergedConfigPath)
     if ($LASTEXITCODE -ne 0) { throw 'Could not merge GUI provider configuration.' }
+    & wsl.exe -d $WslDistribution --exec python3 (ConvertTo-WslPath (Join-Path $PSScriptRoot 'gui_preferences.py')) `
+        --config (ConvertTo-WslPath $mergedConfigPath) `
+        --existing (ConvertTo-WslPath (Join-Path $configHome '.codex-global-state.json')) `
+        --output (ConvertTo-WslPath $mergedConfigPath)
+    if ($LASTEXITCODE -ne 0) { throw 'Could not merge GUI reasoning preferences.' }
     $config = Get-Content $mergedConfigPath -Raw -Encoding UTF8
     Remove-Item $mergedConfigPath
-    $mergedStatePath = Join-Path $stage 'managed.state.json'
-    & wsl.exe -d $WslDistribution --exec python3 (ConvertTo-WslPath (Join-Path $PSScriptRoot 'gui_preferences.py')) `
-        --existing (ConvertTo-WslPath (Join-Path $configHome '.codex-global-state.json')) `
-        --output (ConvertTo-WslPath $mergedStatePath)
-    if ($LASTEXITCODE -ne 0) { throw 'Could not merge GUI reasoning preferences.' }
-    $preferences = Get-Content $mergedStatePath -Raw -Encoding UTF8
-    Remove-Item $mergedStatePath
     Copy-Item (Join-Path $PSScriptRoot 'codex-local-gui-wsl') (Join-Path $stage 'resources\codex-local-gui-wsl')
     Copy-Item (Join-Path $PSScriptRoot 'gui_backend.py') (Join-Path $stage 'resources\gui_backend.py')
     Copy-Item (Join-Path $LocalConfigDirectory 'codex-local-backend.json') (Join-Path $stage 'resources\codex-local-backend.json')
@@ -112,7 +110,7 @@ Start-Process -FilePath (Join-Path $PSScriptRoot 'ChatGPT.exe') -WorkingDirector
     if ($config -match '(?m)^\[desktop\]\s*$') { $config = [regex]::Replace($config, '(?m)^\[desktop\]\s*$', $desktop) }
     else { $config += "`n$desktop`n" }
     [IO.File]::WriteAllText($configPath, $config, $utf8)
-    [IO.File]::WriteAllText((Join-Path $configHome '.codex-global-state.json'), $preferences, $utf8)
+    [IO.File]::WriteAllText($preferences, $utf8)
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
