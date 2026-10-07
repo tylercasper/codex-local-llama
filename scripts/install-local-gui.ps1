@@ -110,7 +110,6 @@ Start-Process -FilePath (Join-Path $PSScriptRoot 'ChatGPT.exe') -WorkingDirector
     if ($config -match '(?m)^\[desktop\]\s*$') { $config = [regex]::Replace($config, '(?m)^\[desktop\]\s*$', $desktop) }
     else { $config += "`n$desktop`n" }
     [IO.File]::WriteAllText($configPath, $config, $utf8)
-    [IO.File]::WriteAllText($preferences, $utf8)
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
