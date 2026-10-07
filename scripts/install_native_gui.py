@@ -57,11 +57,16 @@ def atomic_write(path: Path, contents: bytes, mode: int = 0o600):
             os.unlink(name)
 
 
-def launcher_text(runtime: Path, gui_home: Path) -> str:
+def launcher_text(runtime: Path, gui_home: Path, user_data: Path) -> str:
     return f'''#!/bin/sh
 set -eu
-export CODEX_HOME={shlex.quote(str(gui_home))}
-export CODEX_ELECTRON_USER_DATA_PATH={shlex.quote(str(gui_home / 'app-data'))}
+runtime_root={shlex.quote(str(runtime))}
+installed_home={shlex.quote(str(gui_home))}
+if [ -r "$runtime_root/codex-home" ]; then
+    IFS= read -r installed_home < "$runtime_root/codex-home"
+fi
+export CODEX_HOME="${{CODEX_LOCAL_HOME:-$installed_home}}"
+export CODEX_ELECTRON_USER_DATA_PATH={shlex.quote(str(user_data))}
 export CODEX_CLI_PATH={shlex.quote(str(runtime / 'gui/backend/codex-local-gui-wsl'))}
 unset OPENAI_API_KEY OPENAI_BASE_URL CODEX_OSS_BASE_URL CODEX_OSS_PORT CODEX_SQLITE_HOME
 export CODEX_APP_SERVER_FORCE_CLI=1
@@ -172,6 +177,7 @@ def install(args):
                 run("sudo", "apparmor_parser", "-r", destination)
     args.gui_home.mkdir(parents=True, exist_ok=True, mode=0o700)
     launcher = args.home / ".local/bin/codex-local-gui"
+    user_data = Path(os.environ.get("XDG_DATA_HOME", str(args.home / ".local/share"))) / "codex-local/gui-user-data"
     desktop = args.home / ".local/share/applications/codex-local.desktop"
     current = gui_root / "current"
     if current.exists() and not current.is_symlink():
@@ -179,7 +185,7 @@ def install(args):
     writes = {
         args.gui_home / "model-catalog.json": ((args.assets_dir / "model-catalog.json").read_bytes(), 0o600),
         args.gui_home / "model-instructions.md": ((args.assets_dir / "model-instructions.md").read_bytes(), 0o600),
-        launcher: (launcher_text(args.runtime_root, args.gui_home).encode(), 0o755),
+        launcher: (launcher_text(args.runtime_root, args.gui_home, user_data).encode(), 0o755),
         desktop: (desktop_text(launcher, gui_root / "current/usr/lib/chatgpt/resources/icon-chatgpt.png").encode(), 0o644),
     }
     writes[config] = (merged.encode(), 0o600)

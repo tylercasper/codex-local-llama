@@ -73,6 +73,9 @@ def test_installer_routes_gui_flags_in_dry_run(installer_repo, tmp_path, flag, e
     for mode in ('native', 'wsl'):
         assert (f'selected-{mode}' in result.stdout) == (expected == mode)
     assert not (tmp_path / 'home').exists()
+    if flag == '--gui':
+        assert str(tmp_path / 'home/.codex-local') in result.stdout
+        assert '.codex-local-gui' not in result.stdout
 
 
 def test_gui_modes_are_mutually_exclusive():

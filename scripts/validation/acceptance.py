@@ -25,8 +25,8 @@ import uuid
 
 def search_check(mode, home, output):
     """Exercise the actual configured search endpoint without copying credentials."""
-    config_path = home / ('.codex-local-gui/config.toml' if mode == 'gui'
-                          else '.codex-local/local.config.toml')
+    installed_home = Path((home / '.local/lib/codex-local/codex-home').read_text().strip())
+    config_path = installed_home / ('config.toml' if mode == 'gui' else 'local.config.toml')
     config = tomllib.loads(config_path.read_text())
     base = config['model_providers'][config['model_provider']]['base_url'].rstrip('/')
     health_url = base.removesuffix('/v1') + '/healthz'
@@ -268,9 +268,11 @@ def main():
                 assert not (home / '.local/bin/codex-local-gui').exists(), 'CLI installation installed GUI launcher'
                 command = [str(home / '.local/bin/codex-local')]
             else:
-                env['CODEX_HOME'] = str(home / '.codex-local-gui')
-                env['CODEX_SQLITE_HOME'] = str(home / '.codex-local-gui/sqlite')
-                binary = runtime / 'gui/current/usr/lib/chatgpt/resources/codex'
+                installed_home = Path((runtime / 'codex-home').read_text().strip())
+                config = tomllib.loads((installed_home / 'config.toml').read_text())
+                env['CODEX_HOME'] = str(installed_home)
+                env['CODEX_SQLITE_HOME'] = config.get('sqlite_home', str(installed_home / 'sqlite'))
+                binary = runtime / 'gui/backend/codex-local-gui-wsl'
                 command = [str(binary)]
                 report['checks']['projects'] = project_check(binary, env, workspace, args.output_dir)
                 report['checks']['gui'] = gui_check(home / '.local/bin/codex-local-gui', args.output_dir, env)

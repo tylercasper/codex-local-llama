@@ -94,21 +94,24 @@ because that host's WSL service rejects new process launches. Both backends read
 the same existing conversation set with identical transcript turn counts. Local
 llama.cpp inference and sandboxed file tools also passed on the source build.
 
-## Shared Windows GUI and WSL CLI home
+## Shared conversation home
 
 `--wsl-gui` uses `%USERPROFILE%\.codex-local` for both clients. WSL accesses
 the same directory through `/mnt/c/Users/<user>/.codex-local`, following
 [OpenAI's shared-home guidance](https://learn.chatgpt.com/docs/windows/windows-app#share-config-auth-and-sessions-with-wsl).
 Use `--codex-home /mnt/c/Users/<user>/.codex-local` to select it explicitly.
 The installer records that location in the private runtime's `codex-home` file;
-the CLI, verification command, and subsequent installs reuse it. An explicit
-`CODEX_LOCAL_HOME` overrides the recorded location.
+the CLI, Linux GUI, verification command, and subsequent installs reuse it. An
+explicit `CODEX_LOCAL_HOME` overrides the recorded location for CLI and Linux GUI.
+Native Linux installs also share one home between their CLI and GUI.
 
 Both WSL backends use the documented `sqlite_home` setting to share
 `~/.local/state/codex-local/sqlite`. This keeps the conversation index consistent
 while the Windows GUI retains its own desktop database under the Windows home.
 Skills, session transcripts, and model assets live in the shared Windows home.
-The Linux-native GUI installed by `--gui` keeps its separate home.
+The Linux-native GUI installed by `--gui` uses this same conversation home. Its
+Electron settings live separately in `$XDG_DATA_HOME/codex-local/gui-user-data`
+(default `~/.local/share/codex-local/gui-user-data`).
 
 Upgrades preserve an existing `sqlite_home` value, session transcripts, desktop
 state, and Electron user-data directory. The backend shim reads that configured
@@ -116,13 +119,13 @@ database path instead of substituting a new directory. Back up the existing home
 and SQLite databases before changing component versions; SQLite's backup API
 captures committed WAL contents, unlike a plain copy of a live database file.
 
-Existing separate homes require a migration before switching: close both local
+Existing separate homes require a migration before switching: close the local
 clients, back up their homes, preserve the Windows GUI's settings and desktop
 database, and copy session transcripts and personal skills into the shared home
 without overwriting conflicts. Keep the original homes until verification is
 complete. The runtime can rebuild its history index from session transcripts;
-do not merge SQLite files by overwriting one with another. Reopen both clients
-and check conversation listing and resumption in both directions. An active
+do not merge SQLite files by overwriting one with another. Reopen the CLI and each
+installed GUI and check conversation listing and resumption across them. An active
 conversation has one writer, so release it in one client before resuming it in
 the other.
 
@@ -153,3 +156,30 @@ run the integrity check without copying the archive into the checkout. The
 verification command checks services, provider health, and model discovery;
 it does not run inference. Disposable VM acceptance tools and their prerequisites
 are described in [`scripts/validation/README.md`](scripts/validation/README.md).
+
+## Workspace and runtime layout
+
+Keep one authoritative checkout of this repository. `vendor/codex` is its pinned
+upstream source; `.build/` contains disposable build outputs. Installations run
+from `~/.local/lib/codex-local`, independently of task or staging directories.
+The Codex protocol adapter is maintained here in `src/codex_local_provider`;
+llama-server build and deployment belong to the separate `llama-deploy` repository.
+
+The `codex-home` pointer in the runtime identifies the shared configuration and
+conversation directory. Its configured `sqlite_home` identifies the matching
+history databases. Treat these as one logical profile; do not select a fresh
+database when reusing transcripts. Retained migration backups belong under
+`~/.local/state/codex-local/backups`, outside working checkouts.
+
+An optional private Rust toolchain can live under
+`~/.local/share/codex-local/build-tools`. To use it:
+
+```bash
+export CARGO_HOME="$HOME/.local/share/codex-local/build-tools/cargo"
+export RUSTUP_HOME="$HOME/.local/share/codex-local/build-tools/rustup"
+export PATH="$CARGO_HOME/bin:$PATH"
+```
+
+Keep machine-specific endpoints and paths in the private deployment configuration.
+Temporary verification projects should use temporary directories and be removed
+after verification; they are not additional source workspaces or user profiles.

@@ -227,11 +227,7 @@ if [[ -n "$gui_mode" ]]; then
         gui_helper="$repo_root/scripts/install-wsl-gui.sh"
     fi
     gui_args=(--assets-dir "$render_dir/gui" --runtime-root "$runtime_root"
-              --gui-home "$home_dir/.codex-local-gui")
-    if [[ "$gui_mode" == --wsl-gui ]]; then
-        gui_args=(--assets-dir "$render_dir/gui" --runtime-root "$runtime_root"
-                  --gui-home "$isolated_home")
-    fi
+              --gui-home "$isolated_home")
     # Validate bundled assets before changing either deployment.
     bash "$gui_helper" "${gui_args[@]}" --dry-run
 fi

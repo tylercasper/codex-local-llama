@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 from codex_local_provider.compatibility import load_manifest
 from test_compatibility import make_package
@@ -233,7 +234,7 @@ def test_launcher_wslg_fallback_preserves_desktop_session(tmp_path, display, way
     with socket.socket(socket.AF_UNIX) as sock:
         socket_path = tmp_path / 'X0'
         sock.bind(str(socket_path))
-        script = module.launcher_text(runtime, home)
+        script = module.launcher_text(runtime, home, tmp_path / "desktop-data")
         script = script.replace('/mnt/wslg/.X11-unix/X0', str(socket_path)).replace('/tmp/.X11-unix/X0', str(socket_path))
         script = script.replace('/run/user/$(id -u)/bus', str(socket_path))
         env = dict(os.environ, DISPLAY=display, WAYLAND_DISPLAY=wayland, DBUS_SESSION_BUS_ADDRESS='invalid')
@@ -241,3 +242,25 @@ def test_launcher_wslg_fallback_preserves_desktop_session(tmp_path, display, way
         lines = result.stdout.splitlines()
         assert lines[:2] == [expected, wayland]
         assert lines[2] == (f'unix:path={socket_path}' if not display and not wayland else 'invalid')
+
+
+def test_launcher_follows_shared_home_and_keeps_desktop_data_separate(tmp_path):
+    runtime = tmp_path / 'runtime'
+    binary = runtime / 'gui/current/usr/lib/chatgpt/ChatGPT'
+    binary.parent.mkdir(parents=True)
+    binary.write_text('#!/bin/sh\nprintf "%s\\n" "$CODEX_HOME" "$CODEX_ELECTRON_USER_DATA_PATH" "$@"\n')
+    binary.chmod(0o755)
+    shared = tmp_path / 'shared home'
+    shared.mkdir()
+    user_data = tmp_path / 'desktop data'
+    (runtime / 'codex-home').write_text(str(shared) + '\n')
+    launcher = tmp_path / 'launcher'
+    launcher.write_text(module.launcher_text(runtime, tmp_path / 'stale home', user_data))
+    env = {k:v for k,v in os.environ.items() if k != 'CODEX_LOCAL_HOME'}
+    result = subprocess.run(['sh', str(launcher)], env=env, capture_output=True, text=True, check=True)
+    assert result.stdout.splitlines()[:2] == [str(shared), str(user_data)]
+    override = tmp_path / 'explicit home'
+    override.mkdir()
+    env['CODEX_LOCAL_HOME'] = str(override)
+    result = subprocess.run(['sh', str(launcher)], env=env, capture_output=True, text=True, check=True)
+    assert result.stdout.splitlines()[:2] == [str(override), str(user_data)]
